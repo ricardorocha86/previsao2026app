@@ -1,0 +1,55 @@
+[server]
+enableStaticServing = true
+
+[theme]
+primaryColor = "#209927"
+backgroundColor = "#070907"
+secondaryBackgroundColor = "#111611"
+textColor = "#F1F1F1"
+font = "Open Sans, sans-serif"
+headingFont = "Montserrat, sans-serif"
+
+[[theme.fontFaces]]
+family = "Open Sans"
+url = "app/static/fonts/open-sans-300.woff2"
+weight = "300"
+
+[[theme.fontFaces]]
+family = "Open Sans"
+url = "app/static/fonts/open-sans-400.woff2"
+weight = "400"
+
+[[theme.fontFaces]]
+family = "Open Sans"
+url = "app/static/fonts/open-sans-500.woff2"
+weight = "500"
+
+[[theme.fontFaces]]
+family = "Open Sans"
+url = "app/static/fonts/open-sans-600.woff2"
+weight = "600"
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "app/static/fonts/montserrat-400.woff2"
+weight = "400"
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "app/static/fonts/montserrat-600.woff2"
+weight = "600"
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "app/static/fonts/montserrat-700.woff2"
+weight = "700"
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "app/static/fonts/montserrat-800.woff2"
+weight = "800"
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "app/static/fonts/montserrat-900.woff2"
+weight = "900"

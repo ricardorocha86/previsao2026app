@@ -658,12 +658,12 @@ def run_simulation_progressive(
 
 inject_custom_css()
 
-st.markdown("## Explorador de Força")
+st.markdown("## Simulação Copa do Mundo 2026")
 st.markdown(
     """
-<p style="color: #C9D1C9; font-size: 1rem; margin-bottom: 1.5rem;">
-Combine os índices normalizados de <b style="color: #209927;">FIFA</b>,
-<b style="color: #035C88;">ELO</b>, o <b>momento recente</b>, <b style="color: #FFCF26;">valor de mercado</b>,
+<p style="font-size: 1rem; margin-bottom: 1.5rem;">
+Combine os índices normalizados de <b>FIFA</b>,
+<b>ELO</b>, o <b>momento recente</b>, <b>valor de mercado</b>,
 o <b>histórico em Copas</b>, ajuste <b>elasticidade</b> e <b>offset</b> e veja como isso altera a probabilidade de um jogo.
 </p>
 """,
@@ -707,7 +707,7 @@ with st.sidebar:
     with col7:
         offset = st.slider("Offset", min_value=0.0, max_value=1.0, value=0.13, step=0.01)
     with col8:
-        elasticidade = st.slider("Elasticidade", min_value=0.5, max_value=2.5, value=1.15, step=0.05)
+        elasticidade = st.slider("Elasticidade", min_value=0.1, max_value=5.0, value=1.15, step=0.01)
 
     col9, col10 = st.columns([2, 3])
     with col9:
@@ -773,41 +773,29 @@ st.markdown("### Tabela de Força")
 
 display_table = combined_df[
     [
-        "FIFA_Current_Points",
-        "fifa_force_01",
-        "ELO_Rating",
-        "elo_force_01",
-        "ELO_Chg_1A",
-        "momentum_force_01",
-        "Valor_Mercado_Milhoes_EUR",
-        "market_force_01",
-        "Participações_Copa_Mundo",
-        "world_cup_history_01",
-        "forca_resultante_01",
-        "forca_elastica",
-        "forca_com_offset",
-        "ranking_forca",
         "Seleção",
+        "fifa_force_01",
+        "elo_force_01",
+        "momentum_force_01",
+        "market_force_01",
+        "world_cup_history_01",
+        "is_host",
+        "forca_resultante_01",
+        "forca_com_offset",
         "market_prob",
     ]
 ].rename(
     columns={
         "Seleção": "Seleção",
-        "market_prob": "Prob Mkt",
-        "FIFA_Current_Points": "FIFA Pts",
-        "fifa_force_01": "FIFA 0-1",
-        "ELO_Rating": "ELO",
-        "elo_force_01": "ELO 0-1",
-        "ELO_Chg_1A": "Mom 1A",
-        "momentum_force_01": "Mom 0-1",
-        "Valor_Mercado_Milhoes_EUR": "Mkt € mi",
-        "market_force_01": "Mkt 0-1",
-        "Participações_Copa_Mundo": "Copas",
-        "world_cup_history_01": "Hist 0-1",
+        "fifa_force_01": "Fifa",
+        "elo_force_01": "Elo",
+        "momentum_force_01": "Momento",
+        "market_force_01": "Mercado",
+        "world_cup_history_01": "Historico",
+        "is_host": "Anfitrião",
         "forca_resultante_01": "Força",
-        "forca_elastica": "Força^e",
-        "forca_com_offset": "Força Aj.",
-        "ranking_forca": "Rank Força",
+        "forca_com_offset": "Força Ajustada",
+        "market_prob": "Prob Implicita",
     }
 )
 
@@ -816,25 +804,124 @@ st.dataframe(
     width='stretch',
     height=520,
     column_config={
-        "FIFA Pts": st.column_config.NumberColumn(format="%.2f"),
-        "FIFA 0-1": st.column_config.NumberColumn(format="%.3f"),
-        "ELO": st.column_config.NumberColumn(format="%.0f"),
-        "ELO 0-1": st.column_config.NumberColumn(format="%.3f"),
-        "Mom 1A": st.column_config.NumberColumn(format="%.1f"),
-        "Mom 0-1": st.column_config.NumberColumn(format="%.3f"),
-        "Mkt € mi": st.column_config.NumberColumn(format="%.2f"),
-        "Mkt 0-1": st.column_config.NumberColumn(format="%.3f"),
-        "Copas": st.column_config.NumberColumn(format="%.0f"),
-        "Hist 0-1": st.column_config.NumberColumn(format="%.3f"),
+        "Fifa": st.column_config.NumberColumn(format="%.3f"),
+        "Elo": st.column_config.NumberColumn(format="%.3f"),
+        "Momento": st.column_config.NumberColumn(format="%.3f"),
+        "Mercado": st.column_config.NumberColumn(format="%.3f"),
+        "Historico": st.column_config.NumberColumn(format="%.3f"),
+        "Anfitrião": st.column_config.NumberColumn(format="%.0f"),
         "Força": st.column_config.NumberColumn(format="%.3f"),
-        "Força^e": st.column_config.NumberColumn(format="%.3f"),
-        "Força Aj.": st.column_config.NumberColumn(format="%.3f"),
-        "Prob Mkt": st.column_config.NumberColumn(format="%.4f"),
+        "Força Ajustada": st.column_config.NumberColumn(format="%.3f"),
+        "Prob Implicita": st.column_config.NumberColumn(format="%.4f"),
     },
 )
 
 st.markdown("---")
 st.markdown("### Partida")
+st.markdown(
+    """
+<style>
+    .match-flag-frame {
+        width: 100%;
+        aspect-ratio: 3 / 2;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #0d120d;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .match-flag-frame img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    .match-stat-card,
+    .match-prob-card {
+        background: #ffffff;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        font-family: 'Exo 2', sans-serif;
+    }
+
+    .match-stat-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 0.85rem;
+    }
+
+    .match-prob-card {
+        border-radius: 14px;
+        padding: 1.2rem;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+    }
+
+    .match-prob-card--draw {
+        padding: 1rem 0.8rem;
+    }
+
+    .match-card-label {
+        font-size: 0.95rem;
+        color: #5a5a6a;
+        line-height: 1.25;
+        font-weight: 700;
+    }
+
+    .match-stat-value {
+        font-size: 2.15rem;
+        font-weight: 900;
+        line-height: 1;
+        margin-top: 0.35rem;
+    }
+
+    .match-prob-value {
+        font-size: 3.25rem;
+        font-weight: 900;
+        line-height: 1;
+        margin-top: 0.55rem;
+    }
+
+    .match-prob-value--home {
+        text-align: left;
+    }
+
+    .match-prob-value--away {
+        text-align: right;
+    }
+
+    .match-team-label {
+        font-family: 'Montserrat', 'Exo 2', sans-serif;
+        font-size: 1rem;
+        font-weight: 900;
+        line-height: 1.15;
+        letter-spacing: 0;
+    }
+
+    .match-team-label--home {
+        text-align: left;
+    }
+
+    .match-team-label--away {
+        text-align: right;
+    }
+
+    .match-draw-label {
+        color: #7d7d86;
+        font-size: 0.82rem;
+        font-weight: 600;
+    }
+
+    .match-draw-value {
+        font-size: 2.25rem;
+        text-align: center;
+    }
+</style>
+""",
+    unsafe_allow_html=True,
+)
 
 team_options = combined_df["Seleção"].tolist()
 ensure_selected_teams(team_options)
@@ -864,7 +951,9 @@ with col_left:
         st.markdown(
             f"""
 <div style="text-align: center; padding: 0.4rem 0;">
-    <img src="{home_flag}" style="width: 100%; border-radius: 8px; box-shadow: 0 4px 20px rgba(32,153,39,0.25);">
+    <div class="match-flag-frame" style="box-shadow: 0 4px 20px rgba(32,153,39,0.25);">
+        <img src="{home_flag}" alt="Bandeira {home_team}">
+    </div>
 </div>
 """,
             unsafe_allow_html=True,
@@ -882,7 +971,9 @@ with col_left:
         st.markdown(
             f"""
 <div style="text-align: center; padding: 0.4rem 0;">
-    <img src="{away_flag}" style="width: 100%; border-radius: 8px; box-shadow: 0 4px 20px rgba(3,92,136,0.25);">
+    <div class="match-flag-frame" style="box-shadow: 0 4px 20px rgba(3,92,136,0.25);">
+        <img src="{away_flag}" alt="Bandeira {away_team}">
+    </div>
 </div>
 """,
             unsafe_allow_html=True,
@@ -910,9 +1001,9 @@ else:
         with col_hm1:
             st.markdown(
                 f"""
-<div style="background: #ffffff; border: 1px solid #e0e0e0; border-left: 3px solid #209927; border-radius: 12px; padding: 0.85rem; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-    <div style="font-size: 0.82rem; color: #5a5a6a; line-height: 1.25; font-weight: 600;">Força</div>
-    <div style="font-size: 2.15rem; font-weight: 800; color: #209927; line-height: 1; margin-top: 0.35rem;">{float(home_row['forca_com_offset']):.3f}</div>
+<div class="match-stat-card" style="border-left: 3px solid #209927;">
+    <div class="match-card-label" style="font-size: 0.82rem; font-weight: 600;">Força</div>
+    <div class="match-stat-value" style="color: #209927;">{float(home_row['forca_com_offset']):.3f}</div>
 </div>
 """,
                 unsafe_allow_html=True,
@@ -920,9 +1011,9 @@ else:
         with col_hm2:
             st.markdown(
                 f"""
-<div style="background: #ffffff; border: 1px solid #e0e0e0; border-left: 3px solid #68E70F; border-radius: 12px; padding: 0.85rem; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-    <div style="font-size: 0.82rem; color: #5a5a6a; line-height: 1.25; font-weight: 600;">Gols esp.</div>
-    <div style="font-size: 2.15rem; font-weight: 800; color: #68E70F; line-height: 1; margin-top: 0.35rem;">{float(match['lambda_a']):.2f}</div>
+<div class="match-stat-card" style="border-left: 3px solid #209927;">
+    <div class="match-card-label" style="font-size: 0.82rem; font-weight: 600;">Gols esp.</div>
+    <div class="match-stat-value" style="color: #209927;">{float(match['lambda_a']):.2f}</div>
 </div>
 """,
                 unsafe_allow_html=True,
@@ -930,9 +1021,9 @@ else:
         with col_am1:
             st.markdown(
                 f"""
-<div style="background: #ffffff; border: 1px solid #e0e0e0; border-left: 3px solid #035C88; border-radius: 12px; padding: 0.85rem; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-    <div style="font-size: 0.82rem; color: #5a5a6a; line-height: 1.25; font-weight: 600;">Força</div>
-    <div style="font-size: 2.15rem; font-weight: 800; color: #035C88; line-height: 1; margin-top: 0.35rem;">{float(away_row['forca_com_offset']):.3f}</div>
+<div class="match-stat-card" style="border-left: 3px solid #035C88;">
+    <div class="match-card-label" style="font-size: 0.82rem; font-weight: 600;">Força</div>
+    <div class="match-stat-value" style="color: #035C88;">{float(away_row['forca_com_offset']):.3f}</div>
 </div>
 """,
                 unsafe_allow_html=True,
@@ -940,9 +1031,9 @@ else:
         with col_am2:
             st.markdown(
                 f"""
-<div style="background: #ffffff; border: 1px solid #e0e0e0; border-left: 3px solid #0480be; border-radius: 12px; padding: 0.85rem; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-    <div style="font-size: 0.82rem; color: #5a5a6a; line-height: 1.25; font-weight: 600;">Gols esp.</div>
-    <div style="font-size: 2.15rem; font-weight: 800; color: #0480be; line-height: 1; margin-top: 0.35rem;">{float(match['lambda_b']):.2f}</div>
+<div class="match-stat-card" style="border-left: 3px solid #035C88;">
+    <div class="match-card-label" style="font-size: 0.82rem; font-weight: 600;">Gols esp.</div>
+    <div class="match-stat-value" style="color: #035C88;">{float(match['lambda_b']):.2f}</div>
 </div>
 """,
                 unsafe_allow_html=True,
@@ -950,14 +1041,14 @@ else:
 
         st.markdown("<div style='height: 1.2rem;'></div>", unsafe_allow_html=True)
 
-        col_prob_1, col_prob_2, col_prob_3 = st.columns(3)
+        col_prob_1, col_prob_2, col_prob_3 = st.columns([3, 2, 3])
 
         with col_prob_1:
             st.markdown(
                 f"""
-<div style="background: #ffffff; border: 2px solid #209927; border-radius: 14px; padding: 1.2rem; text-align: center; box-shadow: 0 2px 12px rgba(32,153,39,0.12);">
-    <div style="font-size: 0.95rem; color: #5a5a6a; font-weight: 700;"><b>Vitória {home_team}</b></div>
-    <div style="font-size: 3rem; font-weight: 800; color: #209927;"><b>{float(match['win_a']):.1%}</b></div>
+<div class="match-prob-card" style="border: 2px solid #209927; box-shadow: 0 2px 12px rgba(32,153,39,0.12);">
+    <div class="match-team-label match-team-label--home" style="color: #209927;">{home_team}</div>
+    <div class="match-prob-value match-prob-value--home" style="color: #209927;">{float(match['win_a']):.1%}</div>
 </div>
 """,
                 unsafe_allow_html=True,
@@ -966,9 +1057,9 @@ else:
         with col_prob_2:
             st.markdown(
                 f"""
-<div style="background: #ffffff; border: 2px solid #9e9e9e; border-radius: 14px; padding: 1.2rem; text-align: center; box-shadow: 0 2px 12px rgba(158,158,158,0.12);">
-    <div style="font-size: 0.95rem; color: #5a5a6a; font-weight: 700;"><b>Empate</b></div>
-    <div style="font-size: 2.1rem; font-weight: 800; color: #9e9e9e;"><b>{float(match['draw']):.1%}</b></div>
+<div class="match-prob-card match-prob-card--draw" style="border: 2px solid #9e9e9e; box-shadow: 0 2px 12px rgba(158,158,158,0.12);">
+    <div class="match-card-label match-draw-label">Empate</div>
+    <div class="match-prob-value match-draw-value" style="color: #9e9e9e;">{float(match['draw']):.1%}</div>
 </div>
 """,
                 unsafe_allow_html=True,
@@ -977,9 +1068,9 @@ else:
         with col_prob_3:
             st.markdown(
                 f"""
-<div style="background: #ffffff; border: 2px solid #035C88; border-radius: 14px; padding: 1.2rem; text-align: center; box-shadow: 0 2px 12px rgba(3,92,136,0.12);">
-    <div style="font-size: 0.95rem; color: #5a5a6a; font-weight: 700;"><b>Vitória {away_team}</b></div>
-    <div style="font-size: 3rem; font-weight: 800; color: #035C88;"><b>{float(match['win_b']):.1%}</b></div>
+<div class="match-prob-card" style="border: 2px solid #035C88; box-shadow: 0 2px 12px rgba(3,92,136,0.12);">
+    <div class="match-team-label match-team-label--away" style="color: #035C88;">{away_team}</div>
+    <div class="match-prob-value match-prob-value--away" style="color: #035C88;">{float(match['win_b']):.1%}</div>
 </div>
 """,
                 unsafe_allow_html=True,
@@ -988,9 +1079,9 @@ else:
         st.markdown(
             f"""
 <div style="background: #e0e0e0; border-radius: 20px; height: 36px; display: flex; overflow: hidden; margin: 1rem 0 1.5rem 0; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);">
-    <div style="width: {float(match['win_a']) * 100:.2f}%; background: linear-gradient(90deg, #209927, #68E70F);"></div>
-    <div style="width: {float(match['draw']) * 100:.2f}%; background: linear-gradient(90deg, #FFCF26, #e5b800);"></div>
-    <div style="width: {float(match['win_b']) * 100:.2f}%; background: linear-gradient(90deg, #035C88, #0480be);"></div>
+    <div style="width: {float(match['win_a']) * 100:.2f}%; background: #209927;"></div>
+    <div style="width: {float(match['draw']) * 100:.2f}%; background: linear-gradient(90deg, #d8d8d8, #b8b8b8);"></div>
+    <div style="width: {float(match['win_b']) * 100:.2f}%; background: #035C88;"></div>
 </div>
 """,
             unsafe_allow_html=True,
@@ -1017,7 +1108,7 @@ else:
                 ],
                 text=annotations_text,
                 texttemplate="%{text}",
-                textfont={"size": 13, "color": "#F1F1F1"},
+                textfont={"size": 16, "color": "#F1F1F1"},
                 hovertemplate=(
                     f"{home_team}: %{{y}} x %{{x}}: {away_team}"
                     "<br>Probabilidade: %{z:.2f}%<extra></extra>"
@@ -1027,14 +1118,22 @@ else:
         )
         fig_heatmap.update_layout(
             title=dict(text="Probabilidade de Placares", x=0.5, xanchor="center", font=dict(size=20)),
-            xaxis=dict(title=f"Gols {away_team}", tickfont=dict(size=12)),
-            yaxis=dict(title=f"Gols {home_team}", tickfont=dict(size=12)),
+            xaxis=dict(
+                title=dict(text=away_team, standoff=18, font=dict(size=18)),
+                tickfont=dict(size=13),
+                automargin=True,
+            ),
+            yaxis=dict(
+                title=dict(text=home_team, standoff=18, font=dict(size=18)),
+                tickfont=dict(size=13),
+                automargin=True,
+            ),
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             font_color="#C9D1C9",
     
-            height=520,
-            margin=dict(l=50, r=20, t=60, b=50),
+            height=598,
+            margin=dict(l=72, r=20, t=60, b=70),
         )
         st.plotly_chart(fig_heatmap, width='stretch')
 

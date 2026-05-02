@@ -7,7 +7,7 @@ backgroundColor = "#070907"
 secondaryBackgroundColor = "#111611"
 textColor = "#F1F1F1"
 font = "Open Sans, sans-serif"
-headingFont = "Montserrat, sans-serif"
+headingFont = "Exo 2, sans-serif"
 
 [[theme.fontFaces]]
 family = "Open Sans"
@@ -28,6 +28,33 @@ weight = "500"
 family = "Open Sans"
 url = "app/static/fonts/open-sans-600.woff2"
 weight = "600"
+
+[[theme.fontFaces]]
+family = "Exo 2"
+url = "app/static/fonts/exo2-400.woff2"
+weight = "400"
+
+[[theme.fontFaces]]
+family = "Exo 2"
+url = "app/static/fonts/exo2-600.woff2"
+weight = "600"
+
+[[theme.fontFaces]]
+family = "Exo 2"
+url = "app/static/fonts/exo2-600-italic.woff2"
+weight = "600"
+style = "italic"
+
+[[theme.fontFaces]]
+family = "Exo 2"
+url = "app/static/fonts/exo2-700.woff2"
+weight = "700"
+
+[[theme.fontFaces]]
+family = "Exo 2"
+url = "app/static/fonts/exo2-700-italic.woff2"
+weight = "700"
+style = "italic"
 
 [[theme.fontFaces]]
 family = "Montserrat"

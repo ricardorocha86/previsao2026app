@@ -113,6 +113,7 @@ def inject_custom_css():
         
         /* ===== TIPOGRAFIA ===== */
         h1, h2, h3 {
+            font-family: 'Exo 2', sans-serif !important;
             font-weight: 800 !important;
             color: var(--text-primary) !important;
             letter-spacing: -0.5px !important;
@@ -153,10 +154,17 @@ def inject_custom_css():
             padding: 1rem;
         }
         
-        div[data-testid="stMetric"] label {
+        div[data-testid="stMetric"] label,
+        div[data-testid="stMetric"] label * {
+            font-family: 'Exo 2', sans-serif !important;
+            font-weight: 700 !important;
             color: var(--text-secondary) !important;
         }
-        div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+        div[data-testid="stMetric"] div[data-testid="stMetricValue"],
+        div[data-testid="stMetric"] div[data-testid="stMetricValue"] * {
+            font-family: 'Exo 2', sans-serif !important;
+            font-weight: 900 !important;
+            line-height: 1 !important;
             color: var(--verde-claro) !important;
         }
         

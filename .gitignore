@@ -9,6 +9,7 @@ venv/
 temp.xlsx
 ~$*.xlsx
 resultados/
+*.log
 
 # Claude Code
 .claude/

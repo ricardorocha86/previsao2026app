@@ -34,6 +34,7 @@ from utils.config import (
 )
 from utils.simulador_oficial import dixon_coles_correction, parse_world_cup_score
 from utils.simulador_oficial import simulate_one_cup_oficial, PoissonMatchSimulator
+from utils.simulador_analitico import run_detailed_simulation
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -536,7 +537,12 @@ def generate_group_predictions(
         df_res = df_res.drop(columns=["Força A"])
     return df_res
 
-def simulation_excel_bytes(simulation_df: pd.DataFrame, info_df: pd.DataFrame, matches_df: pd.DataFrame = None) -> bytes:
+def simulation_excel_bytes(
+    simulation_df: pd.DataFrame,
+    info_df: pd.DataFrame,
+    matches_df: pd.DataFrame = None,
+    extra_sheets: dict[str, pd.DataFrame] | None = None,
+) -> bytes:
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         simulation_df.to_excel(writer, sheet_name="Simulações", index=False)
@@ -594,6 +600,11 @@ def simulation_excel_bytes(simulation_df: pd.DataFrame, info_df: pd.DataFrame, m
                 worksheet.cell(row=row, column=6).fill = win_fill
                 worksheet.cell(row=row, column=7).fill = draw_fill
                 worksheet.cell(row=row, column=8).fill = win_fill
+
+        if extra_sheets:
+            for sheet_name, sheet_df in extra_sheets.items():
+                safe_name = sheet_name[:31]
+                sheet_df.to_excel(writer, sheet_name=safe_name, index=False)
 
     buffer.seek(0)
     return buffer.getvalue()
@@ -669,6 +680,48 @@ def run_simulation_progressive(
     return build_simulation_table(dataframe=dataframe, accumulated=accumulated, n_sims=n_sims)
 
 
+def run_complete_simulation_progressive(
+    dataframe: pd.DataFrame,
+    media_gols: float,
+    n_sims: int,
+    usar_dixon_coles: bool,
+    rho_dixon_coles: float,
+    tipo_chaveamento: str = "Sorteio Oficial",
+    chunk_size: int = 10000,
+) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
+    strengths = dict(zip(dataframe["team_key"], dataframe["forca_com_offset"]))
+    match_cache = build_match_cache(
+        dataframe=dataframe,
+        media_gols=media_gols,
+        usar_dixon_coles=usar_dixon_coles,
+        rho_dixon_coles=rho_dixon_coles,
+    )
+    match_simulator = PoissonMatchSimulator(match_cache=match_cache, strengths=strengths)
+    status_placeholder = st.empty()
+
+    def update_progress(completed: int, total: int) -> None:
+        status_placeholder.markdown(f"**Progresso detalhado:** {completed:,} / {total:,} copas")
+
+    with st.spinner("Processando simulação completa...", show_time=True):
+        detailed_result = run_detailed_simulation(
+            dataframe=dataframe,
+            n_sims=n_sims,
+            match_simulator=match_simulator,
+            strengths=strengths,
+            tipo_chaveamento=tipo_chaveamento,
+            chunk_size=chunk_size,
+            progress_callback=update_progress,
+        )
+
+    status_placeholder.success(f"Simulação completa concluída: {n_sims:,} copas!")
+    sim_table = build_simulation_table(
+        dataframe=dataframe,
+        accumulated=detailed_result["accumulated"],
+        n_sims=n_sims,
+    )
+    return sim_table, detailed_result["tables"]
+
+
 inject_custom_css()
 
 st.markdown("## Simulação Copa do Mundo 2026")
@@ -733,6 +786,7 @@ with st.sidebar:
     st.markdown("#### Parâmetros da Simulação")
     n_sims = st.slider("Nº de Copas", min_value=10000, max_value=1000000, value=10000, step=10000)
     tipo_chaveamento = st.radio("", ["Sorteio Oficial", "Sorteio Aleatório"], horizontal=True)
+    tipo_simulacao = st.radio("Tipo de simulação", ["Básica", "Completa"], horizontal=True)
     run_simulation = st.button("Rodar simulação", width='stretch')
     if "explorador_sim_excel_bytes" not in st.session_state:
         st.session_state["explorador_sim_excel_bytes"] = None
@@ -1155,17 +1209,31 @@ st.markdown("### Simulação")
 
 if "explorador_sim_display" not in st.session_state:
     st.session_state["explorador_sim_display"] = None
+if "explorador_detailed_tables" not in st.session_state:
+    st.session_state["explorador_detailed_tables"] = None
 
 if run_simulation:
-    sim_table = run_simulation_progressive(
-        dataframe=combined_df,
-        media_gols=media_gols,
-        n_sims=int(n_sims),
-        usar_dixon_coles=usar_dixon_coles,
-        rho_dixon_coles=rho_dixon_coles,
-        tipo_chaveamento=tipo_chaveamento,
-        chunk_size=10000,
-    )
+    detailed_tables = None
+    if tipo_simulacao == "Completa":
+        sim_table, detailed_tables = run_complete_simulation_progressive(
+            dataframe=combined_df,
+            media_gols=media_gols,
+            n_sims=int(n_sims),
+            usar_dixon_coles=usar_dixon_coles,
+            rho_dixon_coles=rho_dixon_coles,
+            tipo_chaveamento=tipo_chaveamento,
+            chunk_size=10000,
+        )
+    else:
+        sim_table = run_simulation_progressive(
+            dataframe=combined_df,
+            media_gols=media_gols,
+            n_sims=int(n_sims),
+            usar_dixon_coles=usar_dixon_coles,
+            rho_dixon_coles=rho_dixon_coles,
+            tipo_chaveamento=tipo_chaveamento,
+            chunk_size=10000,
+        )
 
     sim_display = sim_table[
         [
@@ -1211,6 +1279,7 @@ if run_simulation:
             {"Parametro": "Usar Dixon-Coles", "Valor": usar_dixon_coles},
             {"Parametro": "Rho Dixon-Coles", "Valor": rho_dixon_coles},
             {"Parametro": "Número de Copas", "Valor": int(n_sims)},
+            {"Parametro": "Tipo de Simulação", "Valor": tipo_simulacao},
         ]
     )
 
@@ -1219,17 +1288,39 @@ if run_simulation:
         usar_dixon_coles=usar_dixon_coles, rho_dixon_coles=rho_dixon_coles
     )
 
-    st.session_state["explorador_sim_excel_bytes"] = simulation_excel_bytes(sim_display, info_df, matches_df)
+    extra_sheets = None
+    if detailed_tables:
+        extra_sheets = {
+            "Finais": detailed_tables["finais"],
+            "Brasil 1o Top32": detailed_tables["brasil_1o_grupo_top32"],
+            "Brasil 2o Top32": detailed_tables["brasil_2o_grupo_top32"],
+            "Brasil 3o Top32": detailed_tables["brasil_3o_grupo_top32"],
+            "Eliminadores Brasil": detailed_tables["eliminadores_brasil"],
+            "Carrascos Brasil": detailed_tables["eliminadores_brasil_agrupado"],
+            "Titulo Cond Brasil": detailed_tables["titulo_condicional_brasil"],
+            "Impacto Pos Grupo": detailed_tables["impacto_posicao_grupo"],
+            "Bottom16 Surpresa": detailed_tables["bottom16_surpresa"],
+            "Bottom16 Lista": detailed_tables["bottom16_lista"],
+            "Semifinais": detailed_tables["semifinais"],
+        }
+
+    st.session_state["explorador_sim_excel_bytes"] = simulation_excel_bytes(
+        sim_display,
+        info_df,
+        matches_df,
+        extra_sheets=extra_sheets,
+    )
     
     if int(n_sims) >= 100000:
         import datetime
         os.makedirs(BASE_DIR / "resultados", exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%d-%m-%Y")
-        filepath = BASE_DIR / "resultados" / f"simulacao_previsao_esportiva_Pre-Torneio_{timestamp}.xlsx"
+        filepath = BASE_DIR / "resultados" / f"simulacao_previsao_esportiva_{tipo_simulacao}_Pre-Torneio_{timestamp}.xlsx"
         with open(filepath, "wb") as f:
             f.write(st.session_state["explorador_sim_excel_bytes"])
             
     st.session_state["explorador_sim_display"] = sim_display
+    st.session_state["explorador_detailed_tables"] = detailed_tables
     st.rerun()
 
 if st.session_state.get("explorador_sim_display") is not None:
@@ -1250,3 +1341,70 @@ if st.session_state.get("explorador_sim_display") is not None:
             "Campeão": st.column_config.NumberColumn(format="%.3f"),
         },
     )
+
+detailed_tables = st.session_state.get("explorador_detailed_tables")
+if detailed_tables:
+    def show_table(df: pd.DataFrame, height: int = 360) -> None:
+        probability_columns = [
+            col
+            for col in df.columns
+            if col.startswith("Prob") or col.startswith("Titulo ") or col == "Prob titulo"
+        ]
+        st.dataframe(
+            df,
+            width='stretch',
+            height=height,
+            column_config={
+                col: st.column_config.NumberColumn(format="%.3f")
+                for col in probability_columns
+            },
+        )
+
+    st.markdown("### Análises da simulação completa")
+    st.markdown("#### Finais")
+    st.markdown("##### Finais mais prováveis")
+    show_table(detailed_tables["finais"], height=360)
+
+    st.markdown("#### Brasil")
+    st.markdown("##### Primeiro mata-mata do Brasil por posição no grupo")
+    col_brasil_1, col_brasil_2, col_brasil_3 = st.columns(3)
+    with col_brasil_1:
+        st.markdown("###### Brasil 1º do grupo")
+        show_table(detailed_tables["brasil_1o_grupo_top32"], height=320)
+    with col_brasil_2:
+        st.markdown("###### Brasil 2º do grupo")
+        show_table(detailed_tables["brasil_2o_grupo_top32"], height=320)
+    with col_brasil_3:
+        st.markdown("###### Brasil 3º do grupo")
+        show_table(detailed_tables["brasil_3o_grupo_top32"], height=320)
+
+    st.markdown("##### Eliminações do Brasil")
+    col_elim_1, col_elim_2 = st.columns([1, 2])
+    with col_elim_1:
+        st.markdown("###### Top carrascos")
+        show_table(detailed_tables["eliminadores_brasil_agrupado"], height=320)
+    with col_elim_2:
+        st.markdown("###### Carrascos por fase")
+        show_table(detailed_tables["eliminadores_brasil"], height=320)
+
+    st.markdown("#### Condicionais")
+    col_cond_1, col_cond_2 = st.columns([1, 2])
+    with col_cond_1:
+        st.markdown("##### Título do Brasil por condição")
+        show_table(detailed_tables["titulo_condicional_brasil"], height=360)
+    with col_cond_2:
+        st.markdown("##### Impacto da posição no grupo")
+        show_table(detailed_tables["impacto_posicao_grupo"], height=360)
+
+    st.markdown("#### Bottom 16")
+    col_bottom_1, col_bottom_2 = st.columns([2, 1])
+    with col_bottom_1:
+        st.markdown("##### Pelo menos uma bottom 16 por fase")
+        show_table(detailed_tables["bottom16_surpresa"], height=260)
+    with col_bottom_2:
+        st.markdown("##### Lista pelo indicador atual")
+        show_table(detailed_tables["bottom16_lista"], height=260)
+
+    st.markdown("#### Semifinais")
+    st.markdown("##### Quartetos de semifinalistas mais prováveis")
+    show_table(detailed_tables["semifinais"], height=520)

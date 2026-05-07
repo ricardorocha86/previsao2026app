@@ -118,13 +118,22 @@ def inject_live_css() -> None:
         margin-top: 0.2rem;
     }
 
+    .top-live-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
+        gap: 0.75rem;
+        align-items: start;
+        margin-bottom: 0.8rem;
+    }
+
     .current-match {
         background: #111611;
         border: 1px solid rgba(104,231,15,0.18);
         border-left: 4px solid #68E70F;
         border-radius: 8px;
-        padding: 0.9rem;
+        padding: 1rem;
         margin-bottom: 0.8rem;
+        min-height: 275px;
     }
 
     .current-stage {
@@ -139,21 +148,24 @@ def inject_live_css() -> None:
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
         align-items: center;
-        gap: 0.65rem;
-        margin-top: 0.4rem;
+        gap: 1rem;
+        margin-top: 0.9rem;
     }
 
     .team-side {
         display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 0.45rem;
+        gap: 0.65rem;
         min-width: 0;
         color: #F1F1F1;
-        font-weight: 800;
+        font-weight: 900;
+        font-size: 1.15rem;
         line-height: 1.15;
+        text-align: center;
     }
 
-    .team-side.right { justify-content: flex-end; text-align: right; }
+    .team-side.right { justify-content: center; text-align: center; }
     .team-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     .flag {
@@ -165,12 +177,21 @@ def inject_live_css() -> None:
         box-shadow: 0 1px 4px rgba(0,0,0,0.28);
     }
 
+    .current-flag {
+        width: min(100%, 190px);
+        aspect-ratio: 3 / 2;
+        object-fit: cover;
+        border-radius: 6px;
+        flex: 0 0 auto;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.36);
+    }
+
     .score {
         color: #68E70F;
-        font-size: 2.15rem;
+        font-size: 3.6rem;
         font-weight: 950;
         line-height: 1;
-        min-width: 90px;
+        min-width: 150px;
         text-align: center;
     }
 
@@ -183,7 +204,7 @@ def inject_live_css() -> None:
 
     .groups-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
         gap: 0.55rem;
     }
 
@@ -217,7 +238,7 @@ def inject_live_css() -> None:
         width: 100%;
         border-collapse: collapse;
         table-layout: fixed;
-        font-size: 0.78rem;
+        font-size: 0.72rem;
     }
 
     .standings th {
@@ -231,7 +252,7 @@ def inject_live_css() -> None:
 
     .standings td {
         color: #e8efe8;
-        padding: 0.38rem 0.28rem;
+        padding: 0.34rem 0.22rem;
         border-bottom: 1px solid rgba(241,241,241,0.045);
         text-align: center;
     }
@@ -272,9 +293,15 @@ def inject_live_css() -> None:
         margin-top: 0.4rem;
     }
 
+    @media (max-width: 1250px) {
+        .groups-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
     @media (max-width: 900px) {
+        .top-live-grid { grid-template-columns: 1fr; }
         .live-metrics { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
-        .score { font-size: 1.65rem; min-width: 74px; }
+        .score { font-size: 2.4rem; min-width: 100px; }
+        .current-flag { width: min(100%, 150px); }
         .groups-grid { grid-template-columns: 1fr; }
     }
 </style>
@@ -363,7 +390,12 @@ def render_current_match(match: dict | None, bandeiras: dict[str, str]) -> None:
             """
 <div class="current-match">
     <div class="current-stage">Pronto para começar</div>
-    <div class="match-note">Clique em Nova Copa para acompanhar a simulação no painel completo.</div>
+    <div class="score-row">
+        <div class="team-side"><div class="current-flag" style="background: rgba(255,255,255,0.06);"></div><span class="team-name">Seleção A</span></div>
+        <div class="score">0 x 0</div>
+        <div class="team-side right"><div class="current-flag" style="background: rgba(255,255,255,0.06);"></div><span class="team-name">Seleção B</span></div>
+    </div>
+    <div class="match-note">Clique em Nova Copa na sidebar para acompanhar a simulação no painel completo.</div>
 </div>
 """,
             unsafe_allow_html=True,
@@ -385,9 +417,9 @@ def render_current_match(match: dict | None, bandeiras: dict[str, str]) -> None:
 <div class="current-match">
     <div class="current-stage">{esc(PHASE_LABELS.get(match.get("phase"), match.get("phase", "")))}</div>
     <div class="score-row">
-        <div class="team-side">{flag(match['team_a'], bandeiras)}<span class="team-name">{esc(match['team_a'])}</span></div>
+        <div class="team-side">{flag(match['team_a'], bandeiras, "current-flag")}<span class="team-name">{esc(match['team_a'])}</span></div>
         <div class="score">{match['goals_a']} x {match['goals_b']}</div>
-        <div class="team-side right"><span class="team-name">{esc(match['team_b'])}</span>{flag(match['team_b'], bandeiras)}</div>
+        <div class="team-side right">{flag(match['team_b'], bandeiras, "current-flag")}<span class="team-name">{esc(match['team_b'])}</span></div>
     </div>
     <div class="match-note">{esc(note)}</div>
 </div>
@@ -430,7 +462,7 @@ def render_group_cards(group_tables: dict[str, dict[str, dict]], bandeiras: dict
     st.markdown(f'<div class="groups-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
 
 
-def render_recent_matches(matches: list[dict], bandeiras: dict[str, str], limit: int = 14) -> None:
+def render_recent_matches(matches: list[dict], bandeiras: dict[str, str], limit: int = 6) -> None:
     recent = list(reversed(matches[-limit:]))
     if not recent:
         st.markdown('<div class="mini-panel"><div class="group-title">Jogos recentes <span>0</span></div></div>', unsafe_allow_html=True)
@@ -705,9 +737,58 @@ inject_live_css()
 
 st.markdown("## Simulação Ao Vivo da Copa")
 
+default_params = DefaultModelParams()
+with st.sidebar:
+    st.markdown("### Controles")
+    speed = st.select_slider("Velocidade", options=list(DELAY_BY_SPEED), value="Normal")
+    start_new_cup = st.button("Nova Copa", type="primary", use_container_width=True)
+    clear_history = st.button("Limpar histórico", use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("### Parâmetros do modelo")
+    col_w1, col_w2 = st.columns(2)
+    with col_w1:
+        weight_fifa = st.slider("FIFA", 0.0, 1.0, default_params.weight_fifa, 0.01)
+        weight_elo = st.slider("ELO", 0.0, 1.0, default_params.weight_elo, 0.01)
+        weight_history = st.slider("Histórico", 0.0, 1.0, default_params.weight_history, 0.01)
+    with col_w2:
+        weight_market = st.slider("Mercado", 0.0, 1.0, default_params.weight_market, 0.01)
+        weight_momentum = st.slider("Momento", 0.0, 1.0, default_params.weight_momentum, 0.01)
+        weight_host = st.slider("Sede", 0.0, 1.0, default_params.weight_host, 0.01)
+
+    media_gols = st.slider("Média de gols", 0.5, 5.0, default_params.media_gols, 0.05)
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        offset = st.slider("Offset", 0.0, 1.0, default_params.offset, 0.01)
+    with col_m2:
+        elasticidade = st.slider("Elasticidade", 0.1, 5.0, default_params.elasticidade, 0.01)
+
+    usar_dixon_coles = st.toggle("Dixon-Coles", value=default_params.usar_dixon_coles)
+    rho_dixon_coles = st.slider(
+        "Rho Dixon-Coles",
+        -0.30,
+        0.00,
+        default_params.rho_dixon_coles,
+        0.01,
+        disabled=not usar_dixon_coles,
+    )
+
+params = DefaultModelParams(
+    weight_fifa=weight_fifa,
+    weight_market=weight_market,
+    weight_elo=weight_elo,
+    weight_momentum=weight_momentum,
+    weight_history=weight_history,
+    weight_host=weight_host,
+    media_gols=media_gols,
+    offset=offset,
+    elasticidade=elasticidade,
+    usar_dixon_coles=usar_dixon_coles,
+    rho_dixon_coles=rho_dixon_coles,
+)
+
 try:
     raw_df = carregar_dados()
-    params = DefaultModelParams()
     force_df = build_default_force_table(raw_df, params)
 except Exception as error:
     st.error(f"Erro ao carregar dados da simulação ao vivo: {error}")
@@ -720,34 +801,25 @@ top_team = str(force_df.iloc[0]["Seleção"])
 
 ensure_state(groups, strengths)
 
-col_speed, col_start, col_stop, col_clear = st.columns([1.25, 1, 1, 1])
-with col_speed:
-    speed = st.select_slider("Velocidade", options=list(DELAY_BY_SPEED), value="Normal")
-with col_start:
-    if st.button("Nova Copa", type="primary", use_container_width=True):
-        initialize_new_cup(groups, strengths)
-        st.session_state["live_saved_result"] = False
-with col_stop:
-    if st.button("Pausar", use_container_width=True):
-        st.session_state["live_running"] = False
-with col_clear:
-    if st.button("Limpar histórico", use_container_width=True):
-        st.session_state["historico_copas"] = []
-        st.rerun()
+if start_new_cup:
+    initialize_new_cup(groups, strengths)
+    st.session_state["live_saved_result"] = False
 
-st.caption(
-    "Usando os defaults compartilhados: FIFA 0.05, Mercado 1.00, ELO 0.70, Momento 0.30, Histórico 0.90, Sede 0.10, Offset 0.13, Elasticidade 1.15, Média 3.00, Dixon-Coles rho -0.13."
-)
+if clear_history:
+    st.session_state["historico_copas"] = []
+    st.rerun()
 
 overview_slot = st.empty()
-current_slot = st.empty()
-main_col, side_col = st.columns([3.4, 1.15])
-with main_col:
-    groups_slot = st.empty()
-    st.markdown("### Mata-mata")
-    knockout_slot = st.empty()
-with side_col:
+top_left_col, top_right_col = st.columns([1.35, 0.85])
+with top_left_col:
+    current_slot = st.empty()
+with top_right_col:
     side_slot = st.empty()
+
+st.markdown("### Grupos")
+groups_slot = st.empty()
+st.markdown("### Mata-mata")
+knockout_slot = st.empty()
 
 slots = (overview_slot, current_slot, groups_slot, side_slot, knockout_slot)
 render_all(*slots, bandeiras_dict, top_team)

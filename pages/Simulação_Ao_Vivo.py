@@ -1,340 +1,766 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
+from __future__ import annotations
+
+import html
+import os
+import sys
 import time
 from datetime import datetime
-import sys
-import os
+
+import numpy as np
+import pandas as pd
+import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.helpers import inject_custom_css, get_bandeira_url
-from utils.data_loader import carregar_dados, carregar_dados_elo, preparar_estruturas
-from utils.simulador_oficial import simular_jogo_simples as simular_jogo
-from utils.config import MEDIA_GOLS_COPA
+from utils.data_loader import carregar_dados
+from utils.helpers import get_bandeira_url, inject_custom_css
+from utils.live_model import (
+    DefaultModelParams,
+    apply_group_result,
+    build_default_force_table,
+    build_round_of_32,
+    group_stage_records,
+    new_group_table,
+    rank_group,
+    simulate_match,
+)
 
-inject_custom_css()
 
-st.markdown("## 🎬 Simulação Ao Vivo")
-st.markdown("Acompanhe uma Copa do Mundo completa, vendo cada jogo acontecer em tempo real!")
+PHASE_LABELS = {
+    "groups": "Fase de grupos",
+    "round32": "Top 32",
+    "round16": "Oitavas",
+    "quarters": "Quartas",
+    "semis": "Semifinais",
+    "final": "Final",
+    "champion": "Campeão",
+}
 
-# Carregar dados
-try:
-    df_dados = carregar_dados()
-    df_elo = carregar_dados_elo()
-    selecoes, elo_dict, grupos_dict, bandeiras_dict, stats_gols_dict = preparar_estruturas(df_dados, df_elo)
-except Exception as e:
-    st.error(f"❌ Erro ao carregar dados: {e}")
-    st.stop()
+NEXT_PHASE = {
+    "round32": "round16",
+    "round16": "quarters",
+    "quarters": "semis",
+    "semis": "final",
+    "final": "champion",
+}
 
-# Controles
-col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1, 1])
+DELAY_BY_SPEED = {
+    "Lento": 0.85,
+    "Normal": 0.25,
+    "Rápido": 0.08,
+    "Instantâneo": 0.0,
+}
 
-with col_ctrl1:
-    velocidade = st.select_slider("⏱️ Velocidade", options=["Lento", "Normal", "Rápido", "Instantâneo"], value="Normal")
-    delay_map = {"Lento": 1.0, "Normal": 0.3, "Rápido": 0.1, "Instantâneo": 0.0}
-    delay = delay_map[velocidade]
 
-with col_ctrl2:
-    if st.button("🎲 NOVA COPA", width='stretch', type="primary"):
-        st.session_state['live_fase'] = 'grupos'
-        st.session_state['live_jogos'] = []
-        st.session_state['live_stats'] = {g: {t: [0, 0, 0, 0, 0, 0] for t in times} for g, times in grupos_dict.items()}
-        st.session_state['live_running'] = True
-        st.session_state['live_classificados'] = []
-        st.session_state['live_campeao'] = None
-        st.session_state['live_vice'] = None
-        st.session_state['live_semifinalistas'] = []
-        st.session_state['live_final_placar'] = None
+def inject_live_css() -> None:
+    st.markdown(
+        """
+<style>
+    h1, h2, h3 { letter-spacing: 0 !important; }
+    .block-container { padding-top: 1.35rem !important; max-width: 1500px; }
 
-with col_ctrl3:
-    if st.button("⏹️ PARAR", width='stretch'):
-        st.session_state['live_running'] = False
+    .live-hero {
+        background: linear-gradient(135deg, rgba(17,22,17,0.98), rgba(3,92,136,0.30));
+        border: 1px solid rgba(241,241,241,0.10);
+        border-radius: 8px;
+        padding: 1rem 1.15rem;
+        margin-bottom: 0.8rem;
+    }
 
-# Inicializar estado
-if 'live_running' not in st.session_state:
-    st.session_state['live_running'] = False
-    st.session_state['live_fase'] = 'grupos'
-    st.session_state['live_jogos'] = []
-    st.session_state['live_stats'] = {}
-    st.session_state['live_classificados'] = []
-    st.session_state['live_campeao'] = None
-    st.session_state['live_vice'] = None
-    st.session_state['live_semifinalistas'] = []
-    st.session_state['live_final_placar'] = None
+    .live-kicker {
+        color: #68E70F;
+        font-size: 0.78rem;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
 
-if 'historico_copas' not in st.session_state:
-    st.session_state['historico_copas'] = []
+    .live-title {
+        color: #F1F1F1;
+        font-family: 'Exo 2', sans-serif;
+        font-size: 2rem;
+        line-height: 1.05;
+        font-weight: 900;
+        margin: 0.25rem 0 0.4rem;
+    }
 
-# Config de simulação
-live_config = {'media_gols': MEDIA_GOLS_COPA, 'k_scale': 400, 'usar_dixon_coles': False, 'rho_dixon_coles': -0.13}
+    .live-subtitle {
+        color: #c9d1c9;
+        font-size: 0.95rem;
+        margin: 0;
+    }
 
-if st.session_state.get('live_running', False):
-    
-    # ========== FASE DE GRUPOS ==========
-    if st.session_state['live_fase'] == 'grupos':
-        st.markdown("## 🏟️ FASE DE GRUPOS")
-        
-        stats = {g: {t: [0, 0, 0, 0, 0, 0] for t in times} for g, times in grupos_dict.items()}
-        todos_jogos = []
-        
-        for grupo in sorted(grupos_dict.keys()):
-            times = grupos_dict[grupo]
-            for i in range(len(times)):
-                for j in range(i + 1, len(times)):
-                    todos_jogos.append((grupo, times[i], times[j]))
-        
-        jogos_lista = []
-        col_jogos, col_tabela = st.columns([3, 2])
-        jogos_container = col_jogos.empty()
-        tabela_container = col_tabela.empty()
-        
-        for idx, (grupo, t1, t2) in enumerate(todos_jogos):
-            p1, p2, ga, gb, fp1, fp2, resultado = simular_jogo(elo_dict[t1], elo_dict[t2], config=live_config)
-            
-            stats[grupo][t1][0] += p1
-            stats[grupo][t2][0] += p2
-            stats[grupo][t1][4] += ga
-            stats[grupo][t1][5] += gb
-            stats[grupo][t2][4] += gb
-            stats[grupo][t2][5] += ga
-            
-            if resultado == 0:
-                stats[grupo][t1][1] += 1; stats[grupo][t2][3] += 1
-            elif resultado == 1:
-                stats[grupo][t2][1] += 1; stats[grupo][t1][3] += 1
-            else:
-                stats[grupo][t1][2] += 1; stats[grupo][t2][2] += 1
-            
-            jogos_lista.insert(0, {'Grupo': grupo, 'Jogo': f"{idx+1}/{len(todos_jogos)}", 'Time 1': t1, 'Placar': f"{ga} x {gb}", 'Time 2': t2})
-            
-            with jogos_container.container():
-                st.markdown(f"""
-                <div style="background: #ffffff; border: 1px solid #e0e0e0; border-left: 4px solid #209927; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-                    <div style="text-align: center; color: #035C88; font-size: 0.9rem; margin-bottom: 0.5rem; font-weight: 700; font-style: italic;">GRUPO {grupo}</div>
-                    <div style="display: flex; justify-content: center; align-items: center; gap: 1rem;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <img src="{get_bandeira_url(t1, bandeiras_dict)}" style="width: 36px; border-radius: 3px;">
-                            <span style="color: #2E2E2E; font-size: 1.1rem; font-weight: 600;">{t1}</span>
-                        </div>
-                        <div style="font-size: 2rem; font-weight: 800; color: #209927; padding: 0 1rem;">{ga} x {gb}</div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="color: #2E2E2E; font-size: 1.1rem; font-weight: 600;">{t2}</span>
-                            <img src="{get_bandeira_url(t2, bandeiras_dict)}" style="width: 36px; border-radius: 3px;">
-                        </div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                df_jogos_display = pd.DataFrame(jogos_lista[:15])
-                st.dataframe(df_jogos_display, width='stretch', height=300, hide_index=True)
-            
-            with tabela_container.container():
-                for g in sorted(grupos_dict.keys())[:4]:
-                    ranking = sorted(stats[g].items(), key=lambda x: (x[1][0], x[1][4] - x[1][5], x[1][4]), reverse=True)
-                    df_tab = pd.DataFrame([
-                        {'Pos': i+1, 'Seleção': sel, 'P': s[0], 'V': s[1], 'E': s[2], 'D': s[3], 'SG': s[4] - s[5]}
-                        for i, (sel, s) in enumerate(ranking)
-                    ])
-                    st.markdown(f"**Grupo {g}**")
-                    st.dataframe(df_tab, width='stretch', height=140, hide_index=True)
-            
-            if delay > 0:
-                time.sleep(delay)
-            
-            if not st.session_state.get('live_running', False):
-                break
-        
-        if st.session_state.get('live_running', False):
-            resultados_grupos = []
-            for grupo in sorted(grupos_dict.keys()):
-                ranking = sorted(stats[grupo].items(), key=lambda x: (x[1][0], x[1][4] - x[1][5], x[1][4]), reverse=True)
-                for pos, (sel, s) in enumerate(ranking):
-                    resultados_grupos.append((sel, grupo, pos + 1, s[0], s[4] - s[5], s[4], 0))
-            
-            st.session_state['live_resultados_grupos'] = resultados_grupos
-            st.session_state['live_fase'] = 'oitavas'
-            st.rerun()
-    
-    # ========== MATA-MATA ==========
-    elif st.session_state['live_fase'] in ['oitavas', 'quartas', 'semis', 'final']:
-        nomes_fases = {'oitavas': '⚔️ OITAVAS DE FINAL', 'quartas': '🔥 QUARTAS DE FINAL', 'semis': '💥 SEMIFINAIS', 'final': '🏆 FINAL'}
-        st.markdown(f"## {nomes_fases[st.session_state['live_fase']]}")
-        
-        if st.session_state['live_fase'] == 'oitavas':
-            resultados = st.session_state['live_resultados_grupos']
-            primeiros = [(t, s[0], s[1], s[2], s[3]) for t, g, p, *s in resultados if p == 1]
-            segundos = [(t, s[0], s[1], s[2], s[3]) for t, g, p, *s in resultados if p == 2]
-            terceiros = sorted([(t, s[0], s[1], s[2], s[3]) for t, g, p, *s in resultados if p == 3],
-                               key=lambda x: (x[1], x[2], x[3], x[4]), reverse=True)[:8]
-            todos = primeiros + segundos + terceiros
-            classificados = sorted(todos, key=lambda x: (x[1], x[2], x[3], elo_dict[x[0]]), reverse=True)
-        else:
-            classificados = st.session_state['live_classificados']
-        
-        if st.session_state['live_fase'] == 'semis':
-            st.session_state['live_semifinalistas'] = [c[0] for c in classificados]
-        
-        vencedores = []
-        n = len(classificados)
-        jogos_fase = []
-        
-        col_jogos, col_class = st.columns([3, 2])
-        jogos_container = col_jogos.empty()
-        class_container = col_class.empty()
-        
-        for i in range(n // 2):
-            t1, t2 = classificados[i][0], classificados[n - 1 - i][0]
-            p1, p2, ga, gb, fp1, fp2, resultado = simular_jogo(elo_dict[t1], elo_dict[t2], mata_mata=True, config=live_config)
-            
-            ganhador = t1 if resultado == 0 else t2
-            perdedor = t2 if resultado == 0 else t1
-            dados = classificados[i] if resultado == 0 else classificados[n - 1 - i]
-            vencedores.append(dados)
-            
-            penaltis = " (pen)" if ga == gb else ""
-            
-            if st.session_state['live_fase'] == 'final':
-                st.session_state['live_final_placar'] = f"{t1} {ga} x {gb} {t2}{penaltis}"
-                st.session_state['live_vice'] = perdedor
-            
-            jogos_fase.append({'Time 1': t1, 'Placar': f"{ga} x {gb}", 'Time 2': t2, 'Vencedor': f"{ganhador}{penaltis}"})
-            
-            with jogos_container.container():
-                st.markdown(f"""
-                <div style="background: #ffffff; border: 1px solid #e0e0e0; border-left: 4px solid #209927; border-radius: 12px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-                    <div style="display: flex; justify-content: center; align-items: center; gap: 1rem;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <img src="{get_bandeira_url(t1, bandeiras_dict)}" style="width: 40px; border-radius: 3px;">
-                            <span style="color: #2E2E2E; font-size: 1.1rem; font-weight: 600;">{t1}</span>
-                        </div>
-                        <div style="font-size: 2.2rem; font-weight: 800; color: #209927; padding: 0 1rem;">{ga} x {gb}</div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="color: #2E2E2E; font-size: 1.1rem; font-weight: 600;">{t2}</span>
-                            <img src="{get_bandeira_url(t2, bandeiras_dict)}" style="width: 40px; border-radius: 3px;">
-                        </div>
-                    </div>
-                    <div style="text-align: center; margin-top: 0.5rem; color: #209927; font-size: 1rem; font-weight: 700;">
-                        🏆 {ganhador}{penaltis}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                df_fase = pd.DataFrame(jogos_fase)
-                st.dataframe(df_fase, width='stretch', hide_index=True)
-            
-            with class_container.container():
-                st.markdown("### ✅ Classificados")
-                for v in vencedores:
-                    st.success(f"🏆 {v[0]}")
-            
-            if delay > 0:
-                time.sleep(delay * 2)
-        
-        st.session_state['live_classificados'] = vencedores
-        
-        proxima = {'oitavas': 'quartas', 'quartas': 'semis', 'semis': 'final', 'final': 'campeao'}
-        
-        if st.session_state['live_fase'] == 'final':
-            st.session_state['live_campeao'] = vencedores[0][0]
-            st.session_state['live_fase'] = 'campeao'
-        else:
-            st.session_state['live_fase'] = proxima[st.session_state['live_fase']]
-        
-        time.sleep(1)
-        st.rerun()
-    
-    # ========== CAMPEÃO ==========
-    elif st.session_state['live_fase'] == 'campeao':
-        st.session_state['live_running'] = False
-        
-        nova_copa = {
-            'edicao': len(st.session_state['historico_copas']) + 1,
-            'campeao': st.session_state['live_campeao'],
-            'vice': st.session_state.get('live_vice', 'N/A'),
-            'semifinalistas': st.session_state.get('live_semifinalistas', []),
-            'final_placar': st.session_state.get('live_final_placar', 'N/A'),
-            'timestamp': datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        }
-        st.session_state['historico_copas'].append(nova_copa)
-        
-        st.markdown("---")
-        col1, col2, col3 = st.columns([1, 2, 1])
-        campeao = st.session_state['live_campeao']
-        vice = st.session_state.get('live_vice', 'N/A')
-        with col2:
-            st.markdown(f"""
-            <div style="background: #ffffff; border: 3px solid #FFCF26; border-radius: 20px; padding: 3rem; text-align: center; box-shadow: 0 8px 32px rgba(255,207,38,0.3);">
-                <div style="font-size: 5rem;">🏆</div>
-                <img src="{get_bandeira_url(campeao, bandeiras_dict)}" style="width: 120px; height: auto; border-radius: 8px; margin: 1rem 0; box-shadow: 0 4px 20px rgba(32,153,39,0.3);">
-                <div style="font-size: 3.5rem; font-weight: 900; color: #209927; margin: 0.5rem 0;">{campeao}</div>
-                <div style="color: #2E2E2E; font-size: 1.5rem; font-weight: 700; font-style: italic;">CAMPEÃO DA COPA DO MUNDO 2026!</div>
-                <div style="display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 1rem; color: #5a5a6a; font-size: 1rem;">
-                    🥈 Vice: <img src="{get_bandeira_url(vice, bandeiras_dict)}" style="width: 24px; border-radius: 2px;"> {vice}
-                </div>
-                <div style="color: #8a8a9a; font-size: 0.9rem; margin-top: 0.5rem;">Final: {st.session_state.get('live_final_placar', 'N/A')}</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
+    .live-metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(120px, 1fr));
+        gap: 0.55rem;
+        margin-top: 0.85rem;
+    }
+
+    .live-metric {
+        background: rgba(255,255,255,0.055);
+        border: 1px solid rgba(241,241,241,0.08);
+        border-radius: 8px;
+        padding: 0.65rem;
+    }
+
+    .live-metric-label {
+        color: #92a092;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .live-metric-value {
+        color: #F1F1F1;
+        font-size: 1.25rem;
+        font-weight: 900;
+        line-height: 1.1;
+        margin-top: 0.2rem;
+    }
+
+    .current-match {
+        background: #111611;
+        border: 1px solid rgba(104,231,15,0.18);
+        border-left: 4px solid #68E70F;
+        border-radius: 8px;
+        padding: 0.9rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .current-stage {
+        color: #FFCF26;
+        font-size: 0.8rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        text-align: center;
+    }
+
+    .score-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
+        gap: 0.65rem;
+        margin-top: 0.4rem;
+    }
+
+    .team-side {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        min-width: 0;
+        color: #F1F1F1;
+        font-weight: 800;
+        line-height: 1.15;
+    }
+
+    .team-side.right { justify-content: flex-end; text-align: right; }
+    .team-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .flag {
+        width: 28px;
+        height: 19px;
+        object-fit: cover;
+        border-radius: 3px;
+        flex: 0 0 auto;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.28);
+    }
+
+    .score {
+        color: #68E70F;
+        font-size: 2.15rem;
+        font-weight: 950;
+        line-height: 1;
+        min-width: 90px;
+        text-align: center;
+    }
+
+    .match-note {
+        color: #c9d1c9;
+        font-size: 0.82rem;
+        text-align: center;
+        margin-top: 0.45rem;
+    }
+
+    .groups-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
+        gap: 0.55rem;
+    }
+
+    .group-card,
+    .mini-panel,
+    .history-card {
+        background: #111611;
+        border: 1px solid rgba(241,241,241,0.08);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+    }
+
+    .group-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(255,255,255,0.045);
+        color: #F1F1F1;
+        font-weight: 900;
+        padding: 0.45rem 0.55rem;
+    }
+
+    .group-title span {
+        color: #68E70F;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+    }
+
+    .standings {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-size: 0.78rem;
+    }
+
+    .standings th {
+        color: #92a092;
+        font-size: 0.68rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        padding: 0.34rem 0.28rem;
+        border-bottom: 1px solid rgba(241,241,241,0.06);
+    }
+
+    .standings td {
+        color: #e8efe8;
+        padding: 0.38rem 0.28rem;
+        border-bottom: 1px solid rgba(241,241,241,0.045);
+        text-align: center;
+    }
+
+    .standings tr:last-child td { border-bottom: none; }
+    .standings .team-cell { text-align: left; width: 48%; }
+    .standings .qualified td:first-child { color: #68E70F; font-weight: 900; }
+
+    .compact-match {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr);
+        gap: 0.35rem;
+        align-items: center;
+        padding: 0.5rem;
+        border-bottom: 1px solid rgba(241,241,241,0.06);
+        color: #e8efe8;
+        font-size: 0.78rem;
+    }
+
+    .compact-match:last-child { border-bottom: none; }
+    .compact-score { color: #FFCF26; font-weight: 900; text-align: center; }
+    .compact-team { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .compact-team.right { text-align: right; }
+
+    .knockout-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.55rem;
+    }
+
+    .winner-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        color: #68E70F;
+        font-size: 0.75rem;
+        font-weight: 900;
+        margin-top: 0.4rem;
+    }
+
+    @media (max-width: 900px) {
+        .live-metrics { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+        .score { font-size: 1.65rem; min-width: 74px; }
+        .groups-grid { grid-template-columns: 1fr; }
+    }
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def esc(value: object) -> str:
+    return html.escape(str(value))
+
+
+def flag(team: str, bandeiras: dict[str, str], css_class: str = "flag") -> str:
+    return f'<img class="{css_class}" src="{esc(get_bandeira_url(team, bandeiras))}" alt="{esc(team)}">'
+
+
+def build_groups(force_df: pd.DataFrame) -> dict[str, list[str]]:
+    ordered = force_df.sort_values(["Grupo", "rank_forca"], ascending=[True, True])
+    return ordered.groupby("Grupo")["Seleção"].apply(list).to_dict()
+
+
+def build_group_fixtures(groups: dict[str, list[str]]) -> list[dict]:
+    fixtures = []
+    for group in sorted(groups):
+        teams = groups[group]
+        for index_a, team_a in enumerate(teams):
+            for team_b in teams[index_a + 1 :]:
+                fixtures.append({"phase": "groups", "group": group, "team_a": team_a, "team_b": team_b})
+    return fixtures
+
+
+def phase_progress() -> tuple[int, int]:
+    phase = st.session_state.get("live_phase", "groups")
+    if phase == "groups":
+        return st.session_state.get("live_group_index", 0), len(st.session_state.get("live_group_fixtures", []))
+    if phase in NEXT_PHASE:
+        current_round = st.session_state.get("live_current_round", [])
+        played = len(st.session_state.get("live_current_phase_matches", []))
+        return played, max(1, len(current_round) // 2)
+    return 1, 1
+
+
+def render_hero(current_match: dict | None, total_matches: int, top_team: str) -> None:
+    phase = st.session_state.get("live_phase", "groups")
+    played, phase_total = phase_progress()
+    champion = st.session_state.get("live_campeao") or "-"
+    latest = current_match
+    title = "Simulação Ao Vivo"
+    subtitle = "Modelo padrão: força composta, média de gols 3.00 e Dixon-Coles ativo."
+    if latest:
+        subtitle = f"Último jogo: {latest['team_a']} {latest['goals_a']} x {latest['goals_b']} {latest['team_b']}"
+
+    st.markdown(
+        f"""
+<div class="live-hero">
+    <div class="live-kicker">{esc(PHASE_LABELS.get(phase, phase))}</div>
+    <div class="live-title">{esc(title)}</div>
+    <p class="live-subtitle">{esc(subtitle)}</p>
+    <div class="live-metrics">
+        <div class="live-metric">
+            <div class="live-metric-label">Progresso da fase</div>
+            <div class="live-metric-value">{played}/{phase_total}</div>
+        </div>
+        <div class="live-metric">
+            <div class="live-metric-label">Jogos simulados</div>
+            <div class="live-metric-value">{total_matches}</div>
+        </div>
+        <div class="live-metric">
+            <div class="live-metric-label">Favorito do modelo</div>
+            <div class="live-metric-value">{esc(top_team)}</div>
+        </div>
+        <div class="live-metric">
+            <div class="live-metric-label">Campeão</div>
+            <div class="live-metric-value">{esc(champion)}</div>
+        </div>
+    </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def render_current_match(match: dict | None, bandeiras: dict[str, str]) -> None:
+    if match is None:
+        st.markdown(
+            """
+<div class="current-match">
+    <div class="current-stage">Pronto para começar</div>
+    <div class="match-note">Clique em Nova Copa para acompanhar a simulação no painel completo.</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        return
+
+    note = match.get("group")
+    if note:
+        note = f"Grupo {note}"
+    elif match.get("penalty_winner"):
+        note = f"{match['penalty_winner']} avançou nos pênaltis"
+    elif match.get("winner"):
+        note = f"{match['winner']} avançou"
+    else:
+        note = PHASE_LABELS.get(match.get("phase", ""), "")
+
+    st.markdown(
+        f"""
+<div class="current-match">
+    <div class="current-stage">{esc(PHASE_LABELS.get(match.get("phase"), match.get("phase", "")))}</div>
+    <div class="score-row">
+        <div class="team-side">{flag(match['team_a'], bandeiras)}<span class="team-name">{esc(match['team_a'])}</span></div>
+        <div class="score">{match['goals_a']} x {match['goals_b']}</div>
+        <div class="team-side right"><span class="team-name">{esc(match['team_b'])}</span>{flag(match['team_b'], bandeiras)}</div>
+    </div>
+    <div class="match-note">{esc(note)}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def render_group_cards(group_tables: dict[str, dict[str, dict]], bandeiras: dict[str, str]) -> None:
+    cards = []
+    for group in sorted(group_tables):
+        rows = []
+        for position, record in enumerate(rank_group(group_tables[group]), start=1):
+            klass = "qualified" if position <= 2 else ""
+            rows.append(
+                f"""
+<tr class="{klass}">
+    <td>{position}</td>
+    <td class="team-cell">{flag(record['team'], bandeiras)}{esc(record['team'])}</td>
+    <td>{record['played']}</td>
+    <td><b>{record['points']}</b></td>
+    <td>{record['goal_diff']:+d}</td>
+    <td>{record['goals_for']}</td>
+</tr>
+"""
+            )
+        cards.append(
+            f"""
+<div class="group-card">
+    <div class="group-title">Grupo {esc(group)} <span>{sum(r['played'] for r in group_tables[group].values()) // 2}/6</span></div>
+    <table class="standings">
+        <thead>
+            <tr><th>#</th><th class="team-cell">Seleção</th><th>J</th><th>Pts</th><th>SG</th><th>GP</th></tr>
+        </thead>
+        <tbody>{''.join(rows)}</tbody>
+    </table>
+</div>
+"""
+        )
+    st.markdown(f'<div class="groups-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+
+def render_recent_matches(matches: list[dict], bandeiras: dict[str, str], limit: int = 14) -> None:
+    recent = list(reversed(matches[-limit:]))
+    if not recent:
+        st.markdown('<div class="mini-panel"><div class="group-title">Jogos recentes <span>0</span></div></div>', unsafe_allow_html=True)
+        return
+
+    rows = []
+    for match in recent:
+        suffix = ""
+        if match.get("penalty_winner"):
+            suffix = " pen"
+        rows.append(
+            f"""
+<div class="compact-match">
+    <div class="compact-team">{flag(match['team_a'], bandeiras)}{esc(match['team_a'])}</div>
+    <div class="compact-score">{match['goals_a']} x {match['goals_b']}{suffix}</div>
+    <div class="compact-team right">{esc(match['team_b'])}{flag(match['team_b'], bandeiras)}</div>
+</div>
+"""
+        )
+    st.markdown(
+        f"""
+<div class="mini-panel">
+    <div class="group-title">Jogos recentes <span>{len(matches)}</span></div>
+    {''.join(rows)}
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def render_knockout(matches: list[dict], bandeiras: dict[str, str]) -> None:
+    if not matches:
+        return
+
+    cards = []
+    for match in matches:
+        winner = match.get("winner") or "-"
+        cards.append(
+            f"""
+<div class="group-card">
+    <div class="group-title">{esc(PHASE_LABELS.get(match.get('phase'), match.get('phase', '')))} <span>{esc(match.get('slot', ''))}</span></div>
+    <div class="compact-match">
+        <div class="compact-team">{flag(match['team_a'], bandeiras)}{esc(match['team_a'])}</div>
+        <div class="compact-score">{match['goals_a']} x {match['goals_b']}</div>
+        <div class="compact-team right">{esc(match['team_b'])}{flag(match['team_b'], bandeiras)}</div>
+    </div>
+    <div style="padding: 0 0.55rem 0.55rem;">
+        <span class="winner-chip">{flag(winner, bandeiras)}{esc(winner)}{esc(' (pen)' if match.get('penalty_winner') else '')}</span>
+    </div>
+</div>
+"""
+        )
+    st.markdown(f'<div class="knockout-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+
+def render_history(bandeiras: dict[str, str]) -> None:
+    historico = st.session_state.get("historico_copas", [])
+    if not historico:
+        st.info("Nenhuma copa simulada ainda.")
+        return
+
+    campeoes = {}
+    for copa in historico:
+        campeoes[copa["campeao"]] = campeoes.get(copa["campeao"], 0) + 1
+
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("Copas", len(historico))
+    col_b.metric("Campeões únicos", len(campeoes))
+    maior = max(campeoes.items(), key=lambda item: item[1])
+    col_c.metric("Maior campeão", f"{maior[0]} ({maior[1]}x)")
+
+    for copa in reversed(historico[-6:]):
+        st.markdown(
+            f"""
+<div class="history-card" style="padding: 0.75rem; margin-bottom: 0.5rem;">
+    <div style="color:#92a092; font-size:0.78rem; font-weight:800;">Copa #{copa['edicao']} · {esc(copa['timestamp'])}</div>
+    <div style="color:#68E70F; font-size:1.05rem; font-weight:900; margin-top:0.2rem;">
+        {flag(copa['campeao'], bandeiras)}{esc(copa['campeao'])}
+    </div>
+    <div style="color:#c9d1c9; font-size:0.82rem;">Vice: {esc(copa['vice'])} · Final: {esc(copa['final_placar'])}</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+
+def initialize_new_cup(groups: dict[str, list[str]], strengths: dict[str, float]) -> None:
+    st.session_state["live_running"] = True
+    st.session_state["live_phase"] = "groups"
+    st.session_state["live_group_tables"] = new_group_table(groups, strengths)
+    st.session_state["live_group_fixtures"] = build_group_fixtures(groups)
+    st.session_state["live_group_index"] = 0
+    st.session_state["live_matches"] = []
+    st.session_state["live_knockout_matches"] = []
+    st.session_state["live_current_phase_matches"] = []
+    st.session_state["live_current_round"] = []
+    st.session_state["live_campeao"] = None
+    st.session_state["live_vice"] = None
+    st.session_state["live_semifinalistas"] = []
+    st.session_state["live_final_placar"] = None
+    st.session_state["live_seed"] = int(time.time_ns() % 2**32)
+
+
+def ensure_state(groups: dict[str, list[str]], strengths: dict[str, float]) -> None:
+    if "historico_copas" not in st.session_state:
+        st.session_state["historico_copas"] = []
+    if "live_running" not in st.session_state:
+        st.session_state["live_running"] = False
+    if "live_group_tables" not in st.session_state:
+        st.session_state["live_group_tables"] = new_group_table(groups, strengths)
+    if "live_matches" not in st.session_state:
+        st.session_state["live_matches"] = []
+    if "live_knockout_matches" not in st.session_state:
+        st.session_state["live_knockout_matches"] = []
+
+
+def render_all(
+    overview_slot,
+    current_slot,
+    groups_slot,
+    side_slot,
+    knockout_slot,
+    bandeiras: dict[str, str],
+    top_team: str,
+) -> None:
+    matches = st.session_state.get("live_matches", [])
+    current_match = matches[-1] if matches else None
+    with overview_slot.container():
+        render_hero(current_match, len(matches), top_team)
+    with current_slot.container():
+        render_current_match(current_match, bandeiras)
+    with groups_slot.container():
+        render_group_cards(st.session_state.get("live_group_tables", {}), bandeiras)
+    with side_slot.container():
+        render_recent_matches(matches, bandeiras)
+    with knockout_slot.container():
+        render_knockout(st.session_state.get("live_knockout_matches", []), bandeiras)
+
+
+def run_group_stage(
+    params: DefaultModelParams,
+    strengths: dict[str, float],
+    bandeiras: dict[str, str],
+    delay: float,
+    slots: tuple,
+    top_team: str,
+) -> None:
+    rng = np.random.default_rng(st.session_state["live_seed"] + len(st.session_state.get("live_matches", [])))
+    fixtures = st.session_state["live_group_fixtures"]
+    group_tables = st.session_state["live_group_tables"]
+
+    for index in range(st.session_state["live_group_index"], len(fixtures)):
+        fixture = fixtures[index]
+        match = simulate_match(
+            fixture["team_a"],
+            fixture["team_b"],
+            strengths,
+            rng,
+            params,
+            knockout=False,
+        )
+        match.update({"phase": "groups", "group": fixture["group"], "slot": f"{index + 1}/{len(fixtures)}"})
+        apply_group_result(group_tables[fixture["group"]], match, rng)
+        st.session_state["live_group_index"] = index + 1
+        st.session_state["live_matches"].append(match)
+
+        if delay > 0 or index == len(fixtures) - 1 or index % 8 == 0:
+            render_all(*slots, bandeiras, top_team)
+        if delay > 0:
+            time.sleep(delay)
+
+    records = group_stage_records(group_tables)
+    st.session_state["live_group_records"] = records
+    st.session_state["live_current_round"] = build_round_of_32(records, strengths)
+    st.session_state["live_current_phase_matches"] = []
+    st.session_state["live_phase"] = "round32"
+    st.rerun()
+
+
+def run_knockout_stage(
+    params: DefaultModelParams,
+    strengths: dict[str, float],
+    bandeiras: dict[str, str],
+    delay: float,
+    slots: tuple,
+    top_team: str,
+) -> None:
+    phase = st.session_state["live_phase"]
+    current_round = st.session_state.get("live_current_round", [])
+    rng = np.random.default_rng(st.session_state["live_seed"] + len(st.session_state.get("live_matches", [])) * 97)
+    winners = []
+    phase_matches = []
+
+    if phase == "semis":
+        st.session_state["live_semifinalistas"] = [row["team"] for row in current_round]
+
+    for slot_index in range(0, len(current_round), 2):
+        left = current_round[slot_index]
+        right = current_round[slot_index + 1]
+        match = simulate_match(left["team"], right["team"], strengths, rng, params, knockout=True)
+        winner_record = left if match["winner"] == left["team"] else right
+        loser_record = right if winner_record is left else left
+        winners.append(winner_record)
+
+        match.update(
+            {
+                "phase": phase,
+                "slot": f"{(slot_index // 2) + 1}/{len(current_round) // 2}",
+                "winner": winner_record["team"],
+            }
+        )
+        phase_matches.append(match)
+        st.session_state["live_current_phase_matches"] = phase_matches
+        st.session_state["live_knockout_matches"].append(match)
+        st.session_state["live_matches"].append(match)
+
+        if phase == "final":
+            suffix = " (pen)" if match.get("penalty_winner") else ""
+            st.session_state["live_final_placar"] = (
+                f"{match['team_a']} {match['goals_a']} x {match['goals_b']} {match['team_b']}{suffix}"
+            )
+            st.session_state["live_vice"] = loser_record["team"]
+
+        render_all(*slots, bandeiras, top_team)
+        if delay > 0:
+            time.sleep(delay * 1.7)
+
+    st.session_state["live_current_round"] = winners
+    if phase == "final":
+        st.session_state["live_campeao"] = winners[0]["team"]
+        st.session_state["live_phase"] = "champion"
+    else:
+        st.session_state["live_phase"] = NEXT_PHASE[phase]
+    st.session_state["live_current_phase_matches"] = []
+    st.rerun()
+
+
+def finish_cup(bandeiras: dict[str, str]) -> None:
+    st.session_state["live_running"] = False
+    champion = st.session_state.get("live_campeao")
+    if champion and not st.session_state.get("live_saved_result"):
+        st.session_state["historico_copas"].append(
+            {
+                "edicao": len(st.session_state.get("historico_copas", [])) + 1,
+                "campeao": champion,
+                "vice": st.session_state.get("live_vice", "N/A"),
+                "semifinalistas": st.session_state.get("live_semifinalistas", []),
+                "final_placar": st.session_state.get("live_final_placar", "N/A"),
+                "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            }
+        )
+        st.session_state["live_saved_result"] = True
+
+    if champion:
+        vice = st.session_state.get("live_vice", "N/A")
+        st.markdown(
+            f"""
+<div class="live-hero" style="text-align:center; border-color: rgba(255,207,38,0.45);">
+    <div class="live-kicker">Campeão da Copa 2026</div>
+    <div style="margin: 0.8rem 0;">{flag(champion, bandeiras, "flag")}</div>
+    <div class="live-title">{esc(champion)}</div>
+    <p class="live-subtitle">Vice: {esc(vice)} · Final: {esc(st.session_state.get('live_final_placar', 'N/A'))}</p>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
         st.balloons()
 
-else:
-    st.info("👆 Clique em **NOVA COPA** para iniciar uma simulação ao vivo!")
-    
-    if st.session_state.get('live_campeao'):
-        col1, col2, col3 = st.columns([1, 2, 1])
-        campeao = st.session_state['live_campeao']
-        vice = st.session_state.get('live_vice', 'N/A')
-        with col2:
-            st.markdown(f"""
-            <div style="background: #ffffff; border: 3px solid #FFCF26; border-radius: 20px; padding: 3rem; text-align: center; box-shadow: 0 8px 32px rgba(255,207,38,0.3);">
-                <div style="font-size: 5rem;">🏆</div>
-                <img src="{get_bandeira_url(campeao, bandeiras_dict)}" style="width: 120px; height: auto; border-radius: 8px; margin: 1rem 0;">
-                <div style="font-size: 3.5rem; font-weight: 900; color: #209927; margin: 0.5rem 0;">{campeao}</div>
-                <div style="color: #2E2E2E; font-size: 1.5rem; font-weight: 700; font-style: italic;">CAMPEÃO DA COPA DO MUNDO 2026!</div>
-                <div style="display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 1rem; color: #5a5a6a; font-size: 1rem;">
-                    🥈 Vice: <img src="{get_bandeira_url(vice, bandeiras_dict)}" style="width: 24px; border-radius: 2px;"> {vice}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
 
-# ========== HISTÓRICO ==========
-st.markdown("---")
-st.markdown("### 📜 Histórico de Copas Simuladas")
+inject_custom_css()
+inject_live_css()
 
-if len(st.session_state.get('historico_copas', [])) == 0:
-    st.info("Nenhuma copa simulada ainda! Clique em 'NOVA COPA' para começar.")
-else:
-    historico = st.session_state['historico_copas']
-    
-    campeoes_count = {}
-    for copa in historico:
-        campeoes_count[copa['campeao']] = campeoes_count.get(copa['campeao'], 0) + 1
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("🏆 Copas Simuladas", len(historico))
-    with col2:
-        st.metric("🥇 Campeões Únicos", len(campeoes_count))
-    with col3:
-        if campeoes_count:
-            maior = max(campeoes_count.items(), key=lambda x: x[1])
-            st.metric("👑 Maior Campeão", f"{maior[0]} ({maior[1]}x)")
-    
-    for copa in reversed(historico):
-        st.markdown(f"""
-        <div style="background: #ffffff; border: 1px solid #e0e0e0; border-left: 4px solid #209927; border-radius: 12px; padding: 1rem; margin: 0.5rem 0; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
-            <div style="color: #035C88; font-size: 1rem; font-weight: 700; font-style: italic;">🏆 Copa #{copa['edicao']}</div>
-            <div style="color: #209927; font-size: 1.2rem; font-weight: bold; display: flex; align-items: center; gap: 8px;">
-                <img src="{get_bandeira_url(copa['campeao'], bandeiras_dict)}" style="width: 28px; border-radius: 3px;"> {copa['campeao']}
-            </div>
-            <div style="color: #8a8a9a; font-size: 0.85rem;">🥈 Vice: {copa['vice']} | Final: {copa['final_placar']}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    if st.button("🗑️ Limpar Histórico", width='stretch'):
-        st.session_state['historico_copas'] = []
+st.markdown("## Simulação Ao Vivo da Copa")
+
+try:
+    raw_df = carregar_dados()
+    params = DefaultModelParams()
+    force_df = build_default_force_table(raw_df, params)
+except Exception as error:
+    st.error(f"Erro ao carregar dados da simulação ao vivo: {error}")
+    st.stop()
+
+groups = build_groups(force_df)
+strengths = dict(zip(force_df["Seleção"], force_df["forca_com_offset"]))
+bandeiras_dict = dict(zip(force_df["Seleção"], force_df["Link_Bandeira"]))
+top_team = str(force_df.iloc[0]["Seleção"])
+
+ensure_state(groups, strengths)
+
+col_speed, col_start, col_stop, col_clear = st.columns([1.25, 1, 1, 1])
+with col_speed:
+    speed = st.select_slider("Velocidade", options=list(DELAY_BY_SPEED), value="Normal")
+with col_start:
+    if st.button("Nova Copa", type="primary", use_container_width=True):
+        initialize_new_cup(groups, strengths)
+        st.session_state["live_saved_result"] = False
+with col_stop:
+    if st.button("Pausar", use_container_width=True):
+        st.session_state["live_running"] = False
+with col_clear:
+    if st.button("Limpar histórico", use_container_width=True):
+        st.session_state["historico_copas"] = []
         st.rerun()
 
+st.caption(
+    "Usando os defaults compartilhados: FIFA 0.05, Mercado 1.00, ELO 0.70, Momento 0.30, Histórico 0.90, Sede 0.10, Offset 0.13, Elasticidade 1.15, Média 3.00, Dixon-Coles rho -0.13."
+)
 
+overview_slot = st.empty()
+current_slot = st.empty()
+main_col, side_col = st.columns([3.4, 1.15])
+with main_col:
+    groups_slot = st.empty()
+    st.markdown("### Mata-mata")
+    knockout_slot = st.empty()
+with side_col:
+    side_slot = st.empty()
 
+slots = (overview_slot, current_slot, groups_slot, side_slot, knockout_slot)
+render_all(*slots, bandeiras_dict, top_team)
 
+if st.session_state.get("live_running"):
+    delay_value = DELAY_BY_SPEED[speed]
+    if st.session_state["live_phase"] == "groups":
+        run_group_stage(params, strengths, bandeiras_dict, delay_value, slots, top_team)
+    elif st.session_state["live_phase"] in NEXT_PHASE:
+        run_knockout_stage(params, strengths, bandeiras_dict, delay_value, slots, top_team)
+    elif st.session_state["live_phase"] == "champion":
+        finish_cup(bandeiras_dict)
+
+st.markdown("---")
+st.markdown("### Histórico")
+render_history(bandeiras_dict)

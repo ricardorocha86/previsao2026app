@@ -5,6 +5,19 @@ import numpy as np
 MEDIA_GOLS_COPA = 2.75  # m = média de gols esperada por partida
 FORCA_PADRAO = 1.0      # Força padrão para seleções sem dados
 
+# Defaults do modelo usados no explorador e na simulação ao vivo.
+DEFAULT_WEIGHT_FIFA = 0.05
+DEFAULT_WEIGHT_MARKET = 1.00
+DEFAULT_WEIGHT_ELO = 0.70
+DEFAULT_WEIGHT_MOMENTUM = 0.30
+DEFAULT_WEIGHT_HISTORY = 0.90
+DEFAULT_WEIGHT_HOST = 0.10
+DEFAULT_MEDIA_GOLS = 3.00
+DEFAULT_OFFSET = 0.13
+DEFAULT_ELASTICIDADE = 1.15
+DEFAULT_USAR_DIXON_COLES = True
+DEFAULT_RHO_DIXON_COLES = -0.13
+
 # Pesos para o indicador composto de força (Normalização FIFA)
 PESO_RANKING_FIFA = 0.60      # 60% ranking FIFA
 PESO_PARTICIPACOES = 0.15     # 15% participações em copas

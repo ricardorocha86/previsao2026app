@@ -19,6 +19,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from experimento_calibracao_mercado import ODDS_PATH, canonical_team_key, load_market_target
 from utils.helpers import inject_custom_css
+from utils.config import (
+    DEFAULT_ELASTICIDADE,
+    DEFAULT_MEDIA_GOLS,
+    DEFAULT_OFFSET,
+    DEFAULT_RHO_DIXON_COLES,
+    DEFAULT_USAR_DIXON_COLES,
+    DEFAULT_WEIGHT_ELO,
+    DEFAULT_WEIGHT_FIFA,
+    DEFAULT_WEIGHT_HISTORY,
+    DEFAULT_WEIGHT_HOST,
+    DEFAULT_WEIGHT_MARKET,
+    DEFAULT_WEIGHT_MOMENTUM,
+)
 from utils.simulador_oficial import dixon_coles_correction, parse_world_cup_score
 from utils.simulador_oficial import simulate_one_cup_oficial, PoissonMatchSimulator
 
@@ -682,39 +695,39 @@ with st.sidebar:
     st.markdown("#### Composição do Indicador de Força")
     col1, col2 = st.columns(2)
     with col1:
-        weight_fifa = st.slider("FIFA", min_value=0.0, max_value=1.0, value=0.05, step=0.01)
+        weight_fifa = st.slider("FIFA", min_value=0.0, max_value=1.0, value=DEFAULT_WEIGHT_FIFA, step=0.01)
     with col2:
-        weight_market = st.slider("Mercado", min_value=0.0, max_value=1.0, value=1.00, step=0.01)
+        weight_market = st.slider("Mercado", min_value=0.0, max_value=1.0, value=DEFAULT_WEIGHT_MARKET, step=0.01)
         
     col3, col4 = st.columns(2)
     with col3:
-        weight_elo = st.slider("ELO", min_value=0.0, max_value=1.0, value=0.70, step=0.01)
+        weight_elo = st.slider("ELO", min_value=0.0, max_value=1.0, value=DEFAULT_WEIGHT_ELO, step=0.01)
     with col4:
-        weight_momentum = st.slider("Momento", min_value=0.0, max_value=1.0, value=0.30, step=0.01)
+        weight_momentum = st.slider("Momento", min_value=0.0, max_value=1.0, value=DEFAULT_WEIGHT_MOMENTUM, step=0.01)
 
     col5, col6 = st.columns(2)
     with col5:
-        weight_history = st.slider("Histórico Copas", min_value=0.0, max_value=1.0, value=0.90, step=0.01)
+        weight_history = st.slider("Histórico Copas", min_value=0.0, max_value=1.0, value=DEFAULT_WEIGHT_HISTORY, step=0.01)
     with col6:
-        weight_host = st.slider("Anfitrião (Sede)", min_value=0.0, max_value=1.0, value=0.10, step=0.01)
+        weight_host = st.slider("Anfitrião (Sede)", min_value=0.0, max_value=1.0, value=DEFAULT_WEIGHT_HOST, step=0.01)
 
     st.markdown("---")
     st.markdown("#### Parâmetros do Modelo")
     
-    media_gols = st.slider("Média de gols da partida", min_value=0.5, max_value=5.0, value=3.00, step=0.05)
+    media_gols = st.slider("Média de gols da partida", min_value=0.5, max_value=5.0, value=DEFAULT_MEDIA_GOLS, step=0.05)
 
     col7, col8 = st.columns(2)
     with col7:
-        offset = st.slider("Offset", min_value=0.0, max_value=1.0, value=0.13, step=0.01)
+        offset = st.slider("Offset", min_value=0.0, max_value=1.0, value=DEFAULT_OFFSET, step=0.01)
     with col8:
-        elasticidade = st.slider("Elasticidade", min_value=0.1, max_value=5.0, value=1.15, step=0.01)
+        elasticidade = st.slider("Elasticidade", min_value=0.1, max_value=5.0, value=DEFAULT_ELASTICIDADE, step=0.01)
 
     col9, col10 = st.columns([2, 3])
     with col9:
         st.markdown("<div style='margin-top: 2rem;'></div>", unsafe_allow_html=True)
-        usar_dixon_coles = st.toggle("Dixon-Coles", value=True)
+        usar_dixon_coles = st.toggle("Dixon-Coles", value=DEFAULT_USAR_DIXON_COLES)
     with col10:
-        rho_dixon_coles = st.slider("Parâmetro rho", min_value=-0.30, max_value=0.00, value=-0.13, step=0.01, disabled=not usar_dixon_coles)
+        rho_dixon_coles = st.slider("Parâmetro rho", min_value=-0.30, max_value=0.00, value=DEFAULT_RHO_DIXON_COLES, step=0.01, disabled=not usar_dixon_coles)
 
     st.markdown("---")
     st.markdown("#### Parâmetros da Simulação")

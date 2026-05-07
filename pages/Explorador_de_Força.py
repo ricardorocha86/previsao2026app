@@ -19,22 +19,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from experimento_calibracao_mercado import ODDS_PATH, canonical_team_key, load_market_target
 from utils.helpers import inject_custom_css
-from utils.config import (
-    DEFAULT_ELASTICIDADE,
-    DEFAULT_MEDIA_GOLS,
-    DEFAULT_OFFSET,
-    DEFAULT_RHO_DIXON_COLES,
-    DEFAULT_USAR_DIXON_COLES,
-    DEFAULT_WEIGHT_ELO,
-    DEFAULT_WEIGHT_FIFA,
-    DEFAULT_WEIGHT_HISTORY,
-    DEFAULT_WEIGHT_HOST,
-    DEFAULT_WEIGHT_MARKET,
-    DEFAULT_WEIGHT_MOMENTUM,
-)
+from utils import config as app_config
 from utils.simulador_oficial import dixon_coles_correction, parse_world_cup_score
 from utils.simulador_oficial import simulate_one_cup_oficial, PoissonMatchSimulator
 from utils.simulador_analitico import run_detailed_simulation
+
+DEFAULT_WEIGHT_FIFA = getattr(app_config, "DEFAULT_WEIGHT_FIFA", 0.05)
+DEFAULT_WEIGHT_MARKET = getattr(app_config, "DEFAULT_WEIGHT_MARKET", 1.00)
+DEFAULT_WEIGHT_ELO = getattr(app_config, "DEFAULT_WEIGHT_ELO", 0.70)
+DEFAULT_WEIGHT_MOMENTUM = getattr(app_config, "DEFAULT_WEIGHT_MOMENTUM", 0.30)
+DEFAULT_WEIGHT_HISTORY = getattr(app_config, "DEFAULT_WEIGHT_HISTORY", 0.90)
+DEFAULT_WEIGHT_HOST = getattr(app_config, "DEFAULT_WEIGHT_HOST", 0.10)
+DEFAULT_MEDIA_GOLS = getattr(app_config, "DEFAULT_MEDIA_GOLS", 3.00)
+DEFAULT_OFFSET = getattr(app_config, "DEFAULT_OFFSET", 0.13)
+DEFAULT_ELASTICIDADE = getattr(app_config, "DEFAULT_ELASTICIDADE", 1.15)
+DEFAULT_USAR_DIXON_COLES = getattr(app_config, "DEFAULT_USAR_DIXON_COLES", True)
+DEFAULT_RHO_DIXON_COLES = getattr(app_config, "DEFAULT_RHO_DIXON_COLES", -0.13)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent

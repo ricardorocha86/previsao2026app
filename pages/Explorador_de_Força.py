@@ -146,7 +146,7 @@ def show_table(df: pd.DataFrame, height: int = 360, use_container_width: bool = 
         
     st.dataframe(
         prep_pct(df, prob_cols),
-        use_container_width=use_container_width,
+        width="stretch" if use_container_width else "content",
         height=height,
         hide_index=True,
         column_config=configs,
@@ -1066,7 +1066,7 @@ if sim_display_state is not None:
         ]
         st.dataframe(
             prep_pct(sim_display_state, _main_prob_cols),
-            use_container_width=True,
+            width="stretch",
             height=520,
             hide_index=True,
             column_config={
@@ -1114,7 +1114,7 @@ if sim_display_state is not None:
             )
             st.dataframe(
                 prep_pct(elimination_table, ELIMINATION_COLUMNS),
-                use_container_width=True,
+                width="stretch",
                 height=520,
                 hide_index=True,
                 column_config={
@@ -1194,7 +1194,7 @@ if sim_display_state is not None:
                 _finais.insert(0, "Rank", range(1, len(_finais) + 1))
             st.dataframe(
                 _finais,
-                use_container_width=False,
+                width="content",
                 height=360,
                 hide_index=True,
                 column_config={
@@ -1243,7 +1243,7 @@ if sim_display_state is not None:
                 prob_cols = [c for c in ["Campeão", "Média Campeão"] if c in view.columns]
                 st.dataframe(
                     prep_pct(view, prob_cols),
-                    use_container_width=True,
+                    width="stretch",
                     height=height,
                     hide_index=True,
                     column_config={

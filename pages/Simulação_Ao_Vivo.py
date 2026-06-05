@@ -657,7 +657,7 @@ def render_history(bandeiras: dict[str, str]) -> None:
             df_hist,
             hide_index=True,
             height=440,
-            use_container_width=True,
+            width="stretch",
             column_config={
                 "#": st.column_config.NumberColumn(width=50),
                 "Bandeira": st.column_config.ImageColumn(""),

@@ -179,7 +179,7 @@ display_df.index = display_df.index + 1
 
 st.dataframe(
     display_df,
-    use_container_width=True,
+    width="stretch",
     height=580,
     column_config=column_config,
 )

@@ -90,7 +90,7 @@ display_table.insert(0, "Rank", range(1, len(display_table) + 1))
 
 st.dataframe(
     display_table,
-    use_container_width=True,
+    width="stretch",
     height=520,
     hide_index=True,
     column_config={

@@ -23,10 +23,134 @@ from utils.forca_core import (
     compute_match_probabilities,
     load_force_dataframe,
     render_param_sidebar,
+    team_with_flag,
+    TEAM_FLAG_EMOJI,
 )
 
 
 SIM_STAGE_COLUMNS = ["pos_1", "pos_2", "pos_3", "pos_4", "Top32", "Oitavas", "Quartas", "Semifinal", "Final", "Campeao"]
+
+
+# ----- Helpers de exibição: bandeiras nas tabelas e colunas de probabilidade -----
+
+# Colunas que contêm o nome de UMA seleção (recebem a bandeira como prefixo).
+_TEAM_COLS_SINGLE = {
+    "Seleção", "Selecao", "Adversario", "Eliminador",
+    "Finalista A", "Finalista B", "Bottom 16",
+}
+# Colunas com vários times num texto único: nome da coluna -> separador.
+_TEAM_COLS_MULTI = {"Final": " x "}
+
+
+def _flag_single(name: object) -> object:
+    return team_with_flag(name) if isinstance(name, str) else name
+
+
+def _flag_multi(text: object, sep: str) -> object:
+    if not isinstance(text, str):
+        return text
+    return sep.join(team_with_flag(part.strip()) for part in text.split(sep))
+
+
+def add_team_flags(df: pd.DataFrame) -> pd.DataFrame:
+    """Devolve uma cópia do DataFrame com o emoji da bandeira antes dos nomes das seleções."""
+    out = df.copy()
+    for col in out.columns:
+        if col in _TEAM_COLS_SINGLE:
+            out[col] = out[col].map(_flag_single)
+        elif col in _TEAM_COLS_MULTI:
+            sep = _TEAM_COLS_MULTI[col]
+            out[col] = out[col].map(lambda value, _sep=sep: _flag_multi(value, _sep))
+    return out
+
+
+def pct_col(label: str | None = None, width: str | None = "medium") -> "st.column_config.ProgressColumn":
+    """Coluna de probabilidade em % com 1 casa decimal e barra na célula.
+
+    Os valores devem estar em escala 0–100 (use ``prep_pct`` para multiplicar por 100).
+    Em tabelas ``width="stretch"`` passe ``width=None`` para não fixar a largura da coluna
+    (o stretch distribui o espaço); em tabelas ``content`` o padrão ``"medium"`` mantém a barra legível.
+    """
+    return st.column_config.ProgressColumn(
+        label, format="%.1f%%", width=width, min_value=0, max_value=100
+    )
+
+
+def prep_pct(df: pd.DataFrame, prob_cols: list[str]) -> pd.DataFrame:
+    """Cópia do DataFrame com bandeiras nos nomes e colunas de probabilidade em escala 0–100."""
+    out = add_team_flags(df)
+    for col in prob_cols:
+        if col in out.columns:
+            out[col] = out[col] * 100
+    return out
+
+
+def final_pair_label(text: object) -> object:
+    """Formata o confronto da final: bandeira antes do 1º time e depois do 2º.
+
+    Ex.: "França x Espanha" -> "🇫🇷 França  x  Espanha 🇪🇸" (visual de mando, como num placar).
+    """
+    if not isinstance(text, str) or " x " not in text:
+        return text
+    team_a, team_b = (part.strip() for part in text.split(" x ", 1))
+    left = team_with_flag(team_a)
+    right = f"{team_b} {TEAM_FLAG_EMOJI.get(team_b, '')}".strip()
+    return f"{left}  x  {right}"
+
+
+def show_table(df: pd.DataFrame, height: int = 360, use_container_width: bool = False) -> None:
+    """Exibe uma tabela detalhada da simulação.
+
+    Remove colunas auxiliares de base amostral ("Base..."), padroniza a coluna única de
+    probabilidade para "Probabilidade" (o contexto fica no subtítulo acima), adiciona as
+    bandeiras e formata as probabilidades em % com barra na célula.
+    """
+    df = df.copy()
+    
+    # Padronizar a coluna de Seleção para exibição correta
+    df = df.rename(columns={"Selecao": "Seleção"})
+    
+    df = df.drop(
+        columns=[col for col in df.columns if str(col).startswith("Base")],
+        errors="ignore",
+    )
+    
+    # Identificar se a tabela lista e ordena seleções/adversários/eliminadores
+    has_selection_col = any(col in ["Seleção", "Adversario", "Eliminador"] for col in df.columns)
+    is_scenario_table = any(col in ["Condicao", "Fase"] for col in df.columns)
+    
+    if has_selection_col and not is_scenario_table and "Rank" not in df.columns:
+        df.insert(0, "Rank", range(1, len(df) + 1))
+        
+    prob_cols = [col for col in df.columns if str(col).startswith("Prob")]
+    
+    # Rótulos amigáveis para as colunas de probabilidade específicas
+    friendly_labels = {
+        "Prob titulo se 1o grupo": "Se 1º no Grupo",
+        "Prob titulo se 2o grupo": "Se 2º no Grupo",
+        "Prob titulo se avancou em 3o": "Se avançou em 3º",
+    }
+    
+    configs = {}
+    for col in prob_cols:
+        label = friendly_labels.get(col, None)
+        configs[col] = pct_col(label=label)
+        
+    if len(prob_cols) == 1 and prob_cols[0] not in friendly_labels:
+        df = df.rename(columns={prob_cols[0]: "Probabilidade"})
+        configs = {"Probabilidade": pct_col()}
+        prob_cols = ["Probabilidade"]
+        
+    if "Rank" in df.columns:
+        configs["Rank"] = st.column_config.NumberColumn("Rank", width=50, format="%d")
+        
+    st.dataframe(
+        prep_pct(df, prob_cols),
+        use_container_width=use_container_width,
+        height=height,
+        hide_index=True,
+        column_config=configs,
+    )
 
 
 def build_match_cache(
@@ -129,6 +253,9 @@ def _aggregate_category(
         rows.append(row)
 
     result = pd.DataFrame(rows)
+    if "Campeão" in result.columns and "Nº Seleções" in result.columns:
+        result["Média Campeão"] = result["Campeão"] / result["Nº Seleções"]
+
     if order_key is not None:
         result["_ord"] = result["Categoria"].map(order_key)
         result = result.sort_values(by="_ord").drop(columns="_ord")
@@ -269,7 +396,11 @@ def build_category_tables(
             return "Estreantes (1ª Copa)"
         if n_titulos == 0:
             return "Nunca campeãs"
-        return f"{n_titulos} título" + ("s" if n_titulos > 1 else "")
+        if n_titulos in [1, 2]:
+            return "1 ou 2 títulos"
+        if n_titulos >= 3:
+            return "3+ títulos"
+        return "Nunca campeãs"
 
     merged["cat_titulos"] = [_cat_titulos(a, t) for a, t in zip(apps, titulos)]
 
@@ -518,17 +649,44 @@ if "explorador_sim_excel_bytes" not in st.session_state:
     st.session_state["explorador_sim_excel_bytes"] = None
 
 st.markdown("### Parâmetros da Simulação")
-col_param_1, col_param_2 = st.columns([3, 2])
-with col_param_1:
-    n_sims = st.slider(
-        "Nº de Copas", min_value=10000, max_value=1000000, value=10000, step=10000, key="sim_n_sims"
-    )
-with col_param_2:
-    tipo_chaveamento = st.radio(
-        "Chaveamento", ["Sorteio Oficial", "Sorteio Aleatório"], horizontal=True, key="sim_tipo_chaveamento"
-    )
 
-run_simulation = st.button("Rodar simulação", width='stretch')
+
+def _fmt_copas(v: int) -> str:
+    """Formata o nº de copas para o rótulo do slider (ex.: 500000 -> '500 mil', 5000000 -> '5 milhões')."""
+    if v >= 1_000_000:
+        mi = v / 1_000_000
+        num = f"{mi:.0f}" if mi == int(mi) else f"{mi:.1f}"
+        unidade = "milhão" if mi == 1 else "milhões"
+        return f"{num} {unidade}"
+    return f"{v // 1000} mil"
+
+
+SIM_COPAS_OPCOES = (
+    list(range(10000, 100001, 10000))        # 10 mil → 100 mil (de 10 mil em 10 mil)
+    + list(range(200000, 1000001, 100000))   # 200 mil → 1 mi (de 100 mil em 100 mil)
+    + list(range(2000000, 10000001, 1000000))  # 2 mi → 10 mi (de 1 mi em 1 mi)
+)
+
+col_params, _ = st.columns([2, 3])
+with col_params:
+    n_sims = st.select_slider(
+        "Nº de Copas",
+        options=SIM_COPAS_OPCOES,
+        value=10000,
+        format_func=_fmt_copas,
+        key="sim_n_sims_preset",
+    )
+    tipo_chaveamento = st.pills(
+        "Chaveamento", ["Sorteio Oficial", "Sorteio Aleatório"], selection_mode="single", default="Sorteio Oficial", key="sim_tipo_chaveamento"
+    )
+    if tipo_chaveamento is None:
+        tipo_chaveamento = "Sorteio Oficial"
+    # ETA estimado considerando ~1000 simulações por segundo
+    eta_min = int(n_sims) / 1000 / 60
+    eta_label = f"{eta_min:.1f}".replace(".", ",")
+    run_simulation = st.button(
+        f"🚀 Rodar simulação (ETA: {eta_label}min)", type="primary", use_container_width=True
+    )
 
 st.markdown("---")
 st.markdown("### Simulação")
@@ -557,6 +715,7 @@ if run_simulation:
 
     sim_display = sim_table[
         [
+            "Rank Sim",
             "Seleção",
             "pos_1_pct",
             "pos_2_pct",
@@ -571,6 +730,7 @@ if run_simulation:
         ]
     ].rename(
         columns={
+            "Rank Sim": "Rank",
             "pos_1_pct": "1º Grupo",
             "pos_2_pct": "2º Grupo",
             "pos_3_pct": "3º Grupo",
@@ -630,7 +790,8 @@ if run_simulation:
             "Impacto Pos Grupo": detailed_tables["impacto_posicao_grupo"],
             "Bottom16 Surpresa": detailed_tables["bottom16_surpresa"],
             "Bottom16 Lista": detailed_tables["bottom16_lista"],
-            "Semifinais": detailed_tables["semifinais"],
+            "MiniZebra Surpresa": detailed_tables["minizebra_surpresa"],
+            "MiniZebra Lista": detailed_tables["minizebra_lista"],
         }
 
     if extra_sheets is None:
@@ -663,195 +824,264 @@ if run_simulation:
     st.session_state["explorador_group_stage_table"] = group_stage_table
     st.rerun()
 
-if st.session_state.get("explorador_sim_display") is not None:
-    st.dataframe(
-        st.session_state["explorador_sim_display"],
-        width='stretch',
-        height=520,
-        column_config={
-            "1º Grupo": st.column_config.NumberColumn(format="%.3f"),
-            "2º Grupo": st.column_config.NumberColumn(format="%.3f"),
-            "3º Grupo": st.column_config.NumberColumn(format="%.3f"),
-            "4º Grupo": st.column_config.NumberColumn(format="%.3f"),
-            "Top 32": st.column_config.NumberColumn(format="%.3f"),
-            "Oitavas": st.column_config.NumberColumn(format="%.3f"),
-            "Quartas": st.column_config.NumberColumn(format="%.3f"),
-            "Semi": st.column_config.NumberColumn(format="%.3f"),
-            "Final": st.column_config.NumberColumn(format="%.3f"),
-            "Campeão": st.column_config.NumberColumn(format="%.3f"),
-        },
-    )
-
+sim_display_state = st.session_state.get("explorador_sim_display")
 group_stage_table = st.session_state.get("explorador_group_stage_table")
-if group_stage_table is not None:
-    st.markdown("### Fase de grupos detalhada")
-    st.markdown(
-        """
-<p style="font-size: 0.95rem; color: #555; margin-bottom: 1rem;">
-Probabilidade de cada seleção terminar em <b>1º</b>, <b>2º</b>, <b>3º</b> ou <b>4º</b> do
-grupo. <b>Avança como 3º</b> é a chance de se classificar entre os 8 melhores terceiros;
-<b>Classifica (Top 32)</b> é a chance total de ir ao mata-mata; <b>Cai na fase de grupos</b>
-é o complemento.
-</p>
-""",
-        unsafe_allow_html=True,
-    )
-    st.dataframe(
-        group_stage_table,
-        width="stretch",
-        height=560,
-        column_config={
-            col: st.column_config.NumberColumn(format="%.3f")
-            for col in GROUP_STAGE_PROB_COLUMNS
-        },
-    )
-
 elimination_table = st.session_state.get("explorador_elimination_table")
-if elimination_table is not None:
-    st.markdown("### Fase de eliminação por seleção")
-    st.markdown(
-        """
-<p style="font-size: 0.95rem; color: #555; margin-bottom: 1rem;">
-Em qual fase cada seleção é eliminada — da fase de grupos ao título. Cada linha soma
-100%: <b>16-avos</b> = chegou ao mata-mata de 32 e perdeu; <b>Vice</b> = perdeu a final;
-<b>Campeã</b> = venceu o torneio.
-</p>
-""",
-        unsafe_allow_html=True,
-    )
-    st.dataframe(
-        elimination_table,
-        width="stretch",
-        height=520,
-        column_config={
-            "Rank": st.column_config.NumberColumn(format="%d"),
-            **{
-                col: st.column_config.NumberColumn(format="%.3f")
-                for col in ELIMINATION_COLUMNS
-            },
-        },
-    )
-
 detailed_tables = st.session_state.get("explorador_detailed_tables")
-if detailed_tables:
-    def show_table(df: pd.DataFrame, height: int = 360) -> None:
-        probability_columns = [
-            col
-            for col in df.columns
-            if col.startswith("Prob") or col.startswith("Titulo ") or col == "Prob titulo"
+category_tables = st.session_state.get("explorador_category_tables")
+
+_HELP_P = '<p style="font-size: 0.95rem; color: #555; margin-bottom: 1rem;">{}</p>'
+
+if sim_display_state is not None:
+    # Garantir que a coluna 'Rank' existe no estado recuperado (caso seja de sessão antiga)
+    if "Rank" not in sim_display_state.columns:
+        if "Rank Sim" in sim_display_state.columns:
+            sim_display_state = sim_display_state.rename(columns={"Rank Sim": "Rank"})
+        else:
+            sim_display_state = sim_display_state.copy()
+            sim_display_state.insert(0, "Rank", range(1, len(sim_display_state) + 1))
+
+    # Criar abas para as seções de resultado
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "🏆 Probabilidade por Seleção",
+        "😭 Probabilidades de Eliminação",
+        "🇧🇷 Caminho do Brasil",
+        "🏁 Finais Mais Prováveis",
+        "🦓 Zebras (Surpresas)",
+        "📁 Probabilidades por Categoria"
+    ])
+
+    with tab1:
+        # ===================== 1. Probabilidade por seleção =====================
+        st.markdown("### 🏆 Probabilidade por seleção")
+        st.markdown(
+            _HELP_P.format(
+                "Ranking pelos favoritos ao título. Para cada seleção, a probabilidade de terminar "
+                "em cada posição do grupo (<b>1º</b>–<b>4º</b>) e de alcançar cada fase do mata-mata, "
+                "até ser <b>Campeão</b>."
+            ),
+            unsafe_allow_html=True,
+        )
+        _main_prob_cols = [
+            "1º Grupo", "2º Grupo", "3º Grupo", "4º Grupo", "Top 32",
+            "Oitavas", "Quartas", "Semi", "Final", "Campeão",
         ]
         st.dataframe(
-            df,
-            width='stretch',
-            height=height,
+            prep_pct(sim_display_state, _main_prob_cols),
+            use_container_width=True,
+            height=520,
+            hide_index=True,
             column_config={
-                col: st.column_config.NumberColumn(format="%.3f")
-                for col in probability_columns
+                "Rank": st.column_config.NumberColumn("Rank", width=50, format="%d"),
+                "Seleção": st.column_config.TextColumn("Seleção", width="medium"),
+                **{col: pct_col(width="small") for col in _main_prob_cols}
             },
         )
 
-    st.markdown("### Análises da simulação completa")
-    st.markdown("#### Finais")
-    st.markdown("##### Finais mais prováveis")
-    show_table(detailed_tables["finais"], height=360)
+        if detailed_tables:
+            st.markdown("#### Título conforme a posição no grupo")
+            st.markdown(
+                _HELP_P.format(
+                    "Para cada seleção, a probabilidade de ser campeã conforme tenha terminado em "
+                    "<b>1º</b>, <b>2º</b> ou avançado em <b>3º</b> do grupo."
+                ),
+                unsafe_allow_html=True,
+            )
+            show_table(detailed_tables["impacto_posicao_grupo"], height=520)
 
-    st.markdown("#### Brasil")
-    st.markdown("##### Primeiro mata-mata do Brasil por posição no grupo")
-    col_brasil_1, col_brasil_2, col_brasil_3 = st.columns(3)
-    with col_brasil_1:
-        st.markdown("###### Brasil 1º do grupo")
-        show_table(detailed_tables["brasil_1o_grupo_top32"], height=320)
-    with col_brasil_2:
-        st.markdown("###### Brasil 2º do grupo")
-        show_table(detailed_tables["brasil_2o_grupo_top32"], height=320)
-    with col_brasil_3:
-        st.markdown("###### Brasil 3º do grupo")
-        show_table(detailed_tables["brasil_3o_grupo_top32"], height=320)
+    with tab2:
+        # ===================== 2. Probabilidades de Eliminação =====================
+        st.markdown("### 😭 Probabilidades de eliminação")
+        st.markdown(
+            _HELP_P.format(
+                "Distribuição da probabilidade de eliminação de cada seleção em cada fase do mata-mata."
+            ),
+            unsafe_allow_html=True,
+        )
 
-    st.markdown("##### Adversários mais prováveis do Brasil por fase alcançada")
-    col_adv_1, col_adv_2, col_adv_3, col_adv_4, col_adv_5 = st.columns(5)
-    with col_adv_1:
-        st.markdown("###### Dado que o Brasil avançou para 16 avos")
-        show_table(detailed_tables["brasil_adversarios_16avos"], height=300)
-    with col_adv_2:
-        st.markdown("###### Dado que o Brasil avançou para oitavas")
-        show_table(detailed_tables["brasil_adversarios_oitavas"], height=300)
-    with col_adv_3:
-        st.markdown("###### Dado que o Brasil avançou para quartas")
-        show_table(detailed_tables["brasil_adversarios_quartas"], height=300)
-    with col_adv_4:
-        st.markdown("###### Dado que o Brasil avançou para semi")
-        show_table(detailed_tables["brasil_adversarios_semifinal"], height=300)
-    with col_adv_5:
-        st.markdown("###### Dado que o Brasil avançou para final")
-        show_table(detailed_tables["brasil_adversarios_final"], height=300)
+        if elimination_table is not None:
+            # Garantir que a coluna 'Rank' existe no estado recuperado da tabela de eliminação
+            if "Rank" not in elimination_table.columns:
+                elimination_table = elimination_table.copy()
+                elimination_table.insert(0, "Rank", range(1, len(elimination_table) + 1))
 
-    st.markdown("##### Eliminações do Brasil")
-    col_elim_1, col_elim_2 = st.columns([1, 2])
-    with col_elim_1:
-        st.markdown("###### Top carrascos")
-        show_table(detailed_tables["eliminadores_brasil_agrupado"], height=320)
-    with col_elim_2:
-        st.markdown("###### Carrascos por fase")
-        show_table(detailed_tables["eliminadores_brasil"], height=320)
-
-    st.markdown("#### Condicionais")
-    col_cond_1, col_cond_2 = st.columns([1, 2])
-    with col_cond_1:
-        st.markdown("##### Título do Brasil por condição")
-        show_table(detailed_tables["titulo_condicional_brasil"], height=360)
-    with col_cond_2:
-        st.markdown("##### Chance de título pela posição de avanço no grupo")
-        show_table(detailed_tables["impacto_posicao_grupo"], height=360)
-
-    st.markdown("#### Bottom 16")
-    col_bottom_1, col_bottom_2 = st.columns([2, 1])
-    with col_bottom_1:
-        st.markdown("##### Pelo menos uma bottom 16 por fase")
-        show_table(detailed_tables["bottom16_surpresa"], height=260)
-    with col_bottom_2:
-        st.markdown("##### Lista pelo indicador atual")
-        show_table(detailed_tables["bottom16_lista"], height=260)
-
-category_tables = st.session_state.get("explorador_category_tables")
-if category_tables:
-    def show_category_table(df: pd.DataFrame, height: int = 320) -> None:
-        prob_cols = ["Força Média"] + list(CATEGORY_STAGE_LABELS.values())
-        st.dataframe(
-            df,
-            width="stretch",
-            height=height,
-            column_config={
-                "Nº Seleções": st.column_config.NumberColumn(format="%d"),
-                **{
-                    col: st.column_config.NumberColumn(format="%.3f")
-                    for col in prob_cols
-                    if col in df.columns
+            st.markdown("#### Onde cada seleção é eliminada")
+            st.markdown(
+                _HELP_P.format(
+                    "Em qual fase cada seleção é eliminada — da fase de grupos ao título. Cada linha "
+                    "soma 100%: <b>16-avos</b> = chegou ao mata-mata de 32 e perdeu; <b>Vice</b> = "
+                    "perdeu a final; <b>Campeã</b> = venceu o torneio."
+                ),
+                unsafe_allow_html=True,
+            )
+            st.dataframe(
+                prep_pct(elimination_table, ELIMINATION_COLUMNS),
+                use_container_width=True,
+                height=520,
+                hide_index=True,
+                column_config={
+                    "Rank": st.column_config.NumberColumn("Rank", width=50, format="%d"),
+                    "Seleção": st.column_config.TextColumn("Seleção", width="medium"),
+                    **{col: pct_col(width=None) for col in ELIMINATION_COLUMNS},
                 },
-            },
-        )
+            )
 
-    st.markdown("### Probabilidades agregadas por categoria")
-    st.markdown(
-        """
-<p style="font-size: 0.95rem; color: #555; margin-bottom: 1rem;">
-Cada coluna de fase soma a probabilidade das seleções da categoria e divide pelo nº de
-vagas da fase, virando a <b>participação esperada</b> da categoria naquela fase (todas as
-colunas somam 100% entre as categorias). A coluna <b>Campeão</b> é a probabilidade de o
-campeão sair da categoria.
-</p>
-""",
-        unsafe_allow_html=True,
-    )
+    with tab3:
+        # ===================== 3. Caminho do Brasil =====================
+        if detailed_tables:
+            st.markdown("### 🇧🇷 Caminho do Brasil")
 
-    st.markdown("#### Por grupo")
-    show_category_table(category_tables["Por grupo"], height=460)
+            st.markdown("#### Adversário no 1º mata-mata, por posição no grupo")
+            col_brasil_1, col_brasil_2, col_brasil_3 = st.columns(3)
+            with col_brasil_1:
+                st.caption("Brasil em 1º do grupo")
+                show_table(detailed_tables["brasil_1o_grupo_top32"], height=320)
+            with col_brasil_2:
+                st.caption("Brasil em 2º do grupo")
+                show_table(detailed_tables["brasil_2o_grupo_top32"], height=320)
+            with col_brasil_3:
+                st.caption("Brasil avançou em 3º")
+                show_table(detailed_tables["brasil_3o_grupo_top32"], height=320)
 
-    st.markdown("#### Por confederação")
-    show_category_table(category_tables["Por confederação"], height=280)
+            st.markdown("#### Adversário provável em cada fase")
+            st.caption(
+                "Probabilidade de cada seleção ser o adversário, dado que o Brasil chegou àquela fase."
+            )
+            col_adv_1, col_adv_2, col_adv_3 = st.columns(3)
+            with col_adv_1:
+                st.caption("16-avos")
+                show_table(detailed_tables["brasil_adversarios_16avos"], height=300)
+            with col_adv_2:
+                st.caption("Oitavas")
+                show_table(detailed_tables["brasil_adversarios_oitavas"], height=300)
+            with col_adv_3:
+                st.caption("Quartas")
+                show_table(detailed_tables["brasil_adversarios_quartas"], height=300)
 
-    st.markdown("#### Por títulos mundiais")
-    show_category_table(category_tables["Por títulos em Copas"], height=300)
+            col_adv_4, col_adv_5, _ = st.columns(3)
+            with col_adv_4:
+                st.caption("Semifinal")
+                show_table(detailed_tables["brasil_adversarios_semifinal"], height=300)
+            with col_adv_5:
+                st.caption("Final")
+                show_table(detailed_tables["brasil_adversarios_final"], height=300)
+
+            st.markdown("#### Quem pode eliminar o Brasil")
+            col_elim_1, col_elim_2 = st.columns([1, 2])
+            with col_elim_1:
+                st.caption("Resumo — quem mais elimina")
+                show_table(detailed_tables["eliminadores_brasil_agrupado"], height=320)
+            with col_elim_2:
+                st.caption("Por fase")
+                elim_fase = detailed_tables["eliminadores_brasil"].copy()
+                if "Rank" not in elim_fase.columns:
+                    elim_fase.insert(0, "Rank", range(1, len(elim_fase) + 1))
+                show_table(elim_fase, height=320)
+
+            st.markdown("#### Chance de título do Brasil por condição")
+            cond_df = detailed_tables["titulo_condicional_brasil"].drop(columns=["Titulos Brasil"], errors="ignore")
+            show_table(cond_df, height=360)
+        else:
+            st.info("Simule com tabelas detalhadas ativadas para ver o caminho do Brasil.")
+
+    with tab4:
+        # ===================== 4. Finais =====================
+        if detailed_tables:
+            st.markdown("### 🏁 Finais mais prováveis")
+            st.caption("Probabilidade de cada confronto ser a final da Copa.")
+            _finais = detailed_tables["finais"][["Final", "Probabilidade"]].copy()
+            _finais["Final"] = _finais["Final"].map(final_pair_label)
+            _finais["Probabilidade"] = _finais["Probabilidade"] * 100
+            if "Rank" not in _finais.columns:
+                _finais.insert(0, "Rank", range(1, len(_finais) + 1))
+            st.dataframe(
+                _finais,
+                use_container_width=False,
+                height=360,
+                hide_index=True,
+                column_config={
+                    "Rank": st.column_config.NumberColumn("Rank", width=50, format="%d"),
+                    "Final": st.column_config.TextColumn("Final", alignment="center"),
+                    "Probabilidade": pct_col(),
+                },
+            )
+        else:
+            st.info("Simule com tabelas detalhadas ativadas para ver as finais mais prováveis.")
+
+    with tab5:
+        # ===================== 5. Zebras =====================
+        if detailed_tables:
+            st.markdown("### 🦓 Zebras — surpresas pelo indicador de força")
+            st.markdown(
+                _HELP_P.format(
+                    "Chance de uma surpresa: as seleções mais fracas pelo <b>indicador de força</b> "
+                    "indo longe. À esquerda, as <b>16 mais fracas</b> (zebra pesada); à direita, as "
+                    "<b>32 mais fracas</b> (mini-zebra, surpresa menor)."
+                ),
+                unsafe_allow_html=True,
+            )
+            col_z1, col_z2, col_z3, col_z4 = st.columns([1, 1.2, 1, 1.2])
+            with col_z1:
+                st.caption("16 mais fracas — quais são")
+                show_table(detailed_tables["bottom16_lista"], height=250, use_container_width=True)
+            with col_z2:
+                st.caption("16 mais fracas — chance por fase")
+                show_table(detailed_tables["bottom16_surpresa"], height=250, use_container_width=True)
+            with col_z3:
+                st.caption("32 mais fracas — quais são")
+                show_table(detailed_tables["minizebra_lista"], height=250, use_container_width=True)
+            with col_z4:
+                st.caption("32 mais fracas — chance por fase")
+                show_table(detailed_tables["minizebra_surpresa"], height=250, use_container_width=True)
+        else:
+            st.info("Simule com tabelas detalhadas ativadas para ver as zebras.")
+
+    with tab6:
+        # ===================== 6. Probabilidades por categoria =====================
+        if category_tables:
+            def show_category_table(df: pd.DataFrame, height: int = 420) -> None:
+                keep = [c for c in ["Categoria", "Nº Seleções", "Força Média", "Campeão", "Média Campeão"] if c in df.columns]
+                view = df[keep]
+                prob_cols = [c for c in ["Campeão", "Média Campeão"] if c in view.columns]
+                st.dataframe(
+                    prep_pct(view, prob_cols),
+                    use_container_width=True,
+                    height=height,
+                    hide_index=True,
+                    column_config={
+                        "Nº Seleções": st.column_config.NumberColumn(format="%d"),
+                        "Força Média": st.column_config.NumberColumn(format="%.3f"),
+                        "Campeão": pct_col(label="Campeão", width=None),
+                        "Média Campeão": pct_col(label="Média Campeão", width=None),
+                    },
+                )
+
+            st.markdown("### 📁 Probabilidades por categoria")
+            st.markdown(
+                _HELP_P.format(
+                    "Probabilidade de o <b>campeão</b> da Copa sair de cada categoria — a soma das "
+                    "chances de título das seleções do grupo. As categorias somam 100% entre si."
+                ),
+                unsafe_allow_html=True,
+            )
+
+            # Linha 1: Confederação e Títulos
+            col_row1_left, col_row1_right = st.columns(2)
+            with col_row1_left:
+                st.markdown("#### Por confederação")
+                show_category_table(category_tables["Por confederação"], height=280)
+
+            with col_row1_right:
+                st.markdown("#### Por títulos mundiais")
+                show_category_table(category_tables["Por títulos em Copas"], height=240)
+
+            # Linha 2: Grupo (dividido por 2 para não ir pra largura toda)
+            col_row2_left, _ = st.columns(2)
+            with col_row2_left:
+                st.markdown("#### Por grupo")
+                show_category_table(category_tables["Por grupo"], height=460)
+        else:
+            st.info("Simule para ver as probabilidades por categoria.")
 
 st.markdown("---")
 _sim_bytes = st.session_state["explorador_sim_excel_bytes"]
@@ -862,7 +1092,7 @@ with _col_dl:
         data=_sim_bytes if _sim_bytes else "",
         file_name="simulacao_explorador_forca.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        width='stretch',
+        use_container_width=True,
         disabled=_sim_bytes is None,
         help="Disponível após rodar uma simulação." if _sim_bytes is None else None,
     )

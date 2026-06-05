@@ -15,6 +15,7 @@ from utils.forca_core import (
     ensure_selected_teams,
     load_force_dataframe,
     render_param_sidebar,
+    team_with_flag,
 )
 
 
@@ -157,12 +158,14 @@ with col_left:
             "Seleção 1",
             team_options,
             key="explorador_home_team",
+            format_func=team_with_flag,
         )
     with col_away_sel:
         away_team = st.selectbox(
             "Seleção 2",
             team_options,
             key="explorador_away_team",
+            format_func=team_with_flag,
         )
 
     home_flag = combined_df.loc[combined_df["Seleção"] == home_team, "Link_Bandeira"].iloc[0]
@@ -341,20 +344,35 @@ else:
         fig_heatmap.update_layout(
             title=dict(text="Probabilidade de Placares", x=0.5, xanchor="center", font=dict(size=20)),
             xaxis=dict(
-                title=dict(text=away_team, standoff=18, font=dict(size=18)),
+                title=dict(text="", standoff=18, font=dict(size=18)),
                 tickfont=dict(size=13),
-                automargin=True,
+                tickmode="linear",
+                dtick=1,
+                automargin=False,
             ),
             yaxis=dict(
                 title=dict(text=home_team, standoff=18, font=dict(size=18)),
                 tickfont=dict(size=13),
                 automargin=True,
             ),
+            annotations=[
+                dict(
+                    text=away_team,
+                    xref="paper",
+                    yref="paper",
+                    x=0.5,
+                    y=-0.085,
+                    xanchor="center",
+                    yanchor="top",
+                    showarrow=False,
+                    font=dict(size=18, color="#C9D1C9"),
+                )
+            ],
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
             font_color="#C9D1C9",
 
             height=598,
-            margin=dict(l=72, r=20, t=60, b=70),
+            margin=dict(l=72, r=20, t=60, b=95),
         )
-        st.plotly_chart(fig_heatmap, width='stretch')
+        st.plotly_chart(fig_heatmap, use_container_width=True)

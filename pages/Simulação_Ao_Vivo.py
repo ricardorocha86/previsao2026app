@@ -81,7 +81,7 @@ def inject_live_css() -> None:
     }
 
     .live-title {
-        color: #F1F1F1;
+        color: #E0E4DE;
         font-family: 'Exo 2', sans-serif;
         font-size: 2rem;
         line-height: 1.05;
@@ -90,7 +90,7 @@ def inject_live_css() -> None:
     }
 
     .live-subtitle {
-        color: #c9d1c9;
+        color: #aeb6ad;
         font-size: 0.95rem;
         margin: 0;
     }
@@ -657,9 +657,9 @@ def render_history(bandeiras: dict[str, str]) -> None:
             df_hist,
             hide_index=True,
             height=440,
-            width="stretch",
+            use_container_width=True,
             column_config={
-                "#": st.column_config.NumberColumn(width="small"),
+                "#": st.column_config.NumberColumn(width=50),
                 "Bandeira": st.column_config.ImageColumn(""),
             },
         )

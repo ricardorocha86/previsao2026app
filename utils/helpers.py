@@ -55,19 +55,20 @@ def inject_custom_css():
         /* ===== PALETA OFICIAL PREVISÃO ESPORTIVA ===== */
         :root {
             --verde-claro: #68E70F;
+            --verde-valor: #7BC242;
             --verde-escuro: #209927;
             --amarelo: #FFCF26;
             --azul: #035C88;
             --cinza-claro: #F1F1F1;
             --cinza-escuro: #2E2E2E;
-            
-            --bg-primary: #070907;
-            --bg-card: #111611;
-            --bg-card-strong: #1d261d;
-            --text-primary: #F1F1F1;
-            --text-secondary: #c9d1c9;
-            --text-muted: #92a092;
-            --border-light: rgba(241, 241, 241, 0.08);
+
+            --bg-primary: #12150F;
+            --bg-card: #1A1F19;
+            --bg-card-strong: #222a21;
+            --text-primary: #E0E4DE;
+            --text-secondary: #aeb6ad;
+            --text-muted: #828b81;
+            --border-light: rgba(224, 228, 222, 0.08);
             --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.2);
             --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
         }
@@ -84,7 +85,7 @@ def inject_custom_css():
         
         /* ===== SIDEBAR ===== */
         section[data-testid="stSidebar"] {
-            background-color: #050705 !important;
+            background-color: #0E120C !important;
             background-image: none !important;
             border-right: 1px solid rgba(104, 231, 15, 0.1);
         }
@@ -115,16 +116,16 @@ def inject_custom_css():
             margin-bottom: 2px !important;
         }
 
-        /* Customização dos Sliders na Sidebar */
-        section[data-testid="stSidebar"] .stSlider {
+        /* Customização dos Sliders (Global) */
+        .stSlider {
             padding-bottom: 0.5rem !important;
         }
-        section[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div > div {
+        .stSlider [data-baseweb="slider"] > div > div {
             height: 4px !important;
             background: linear-gradient(90deg, var(--verde-escuro), var(--verde-claro)) !important;
             border-radius: 2px !important;
         }
-        section[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] [role="slider"] {
+        .stSlider [data-baseweb="slider"] [role="slider"] {
             background: #ffffff !important;
             border: 2px solid var(--verde-claro) !important;
             box-shadow: 0 0 6px rgba(104, 231, 15, 0.4) !important;
@@ -133,7 +134,7 @@ def inject_custom_css():
         }
         
         /* Marcas numéricas do Slider */
-        section[data-testid="stSidebar"] .stSlider [data-testid="stWidgetLabel"] + div div {
+        .stSlider [data-testid="stWidgetLabel"] + div div {
             color: var(--text-muted) !important;
             font-size: 0.75rem !important;
         }
@@ -166,15 +167,7 @@ def inject_custom_css():
             border-color: var(--verde-escuro) !important;
         }
 
-        /* Sliders */
-        .stSlider [data-baseweb="slider"] > div > div {
-            height: 4px !important;
-            background: var(--verde-escuro) !important;
-        }
-        .stSlider [data-baseweb="slider"] [role="slider"] {
-            background: var(--verde-escuro) !important;
-            border-color: var(--verde-escuro) !important;
-        }
+        /* Sliders globais definidos acima */
         
         /* ===== TIPOGRAFIA ===== */
         h1, h2, h3 {
@@ -207,7 +200,7 @@ def inject_custom_css():
         .stat-value {
             font-size: 2.5rem;
             font-weight: 800;
-            color: var(--verde-claro);
+            color: var(--verde-valor);
         }
         
         /* ===== MÉTRICAS STREAMLIT ===== */
@@ -230,14 +223,41 @@ def inject_custom_css():
             font-family: 'Exo 2', sans-serif !important;
             font-weight: 900 !important;
             line-height: 1 !important;
-            color: var(--verde-claro) !important;
+            color: var(--verde-valor) !important;
         }
         
         /* ===== TABS ===== */
-        .stTabs [aria-selected="true"] {
-            background: var(--verde-escuro) !important;
-            color: #ffffff !important;
+        .stTabs [role="tablist"] {
+            background-color: rgba(255, 255, 255, 0.03) !important;
+            padding: 6px !important;
+            border-radius: 12px !important;
+            border: 1px solid rgba(224, 228, 222, 0.05) !important;
+            gap: 6px !important;
+        }
+        .stTabs [role="tab"] {
+            background-color: transparent !important;
+            color: var(--text-secondary) !important;
+            font-family: 'Exo 2', sans-serif !important;
+            font-weight: 600 !important;
+            font-size: 0.88rem !important;
+            padding: 8px 16px !important;
             border-radius: 8px !important;
+            border: none !important;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            height: auto !important;
+        }
+        .stTabs [role="tab"]:hover {
+            color: #ffffff !important;
+            background-color: rgba(255, 255, 255, 0.05) !important;
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: var(--verde-escuro) !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            box-shadow: 0 4px 12px rgba(32, 153, 39, 0.25) !important;
+        }
+        .stTabs [data-baseweb="tab-highlight-bar"] {
+            display: none !important;
         }
         
         /* ===== BOTÕES ===== */
@@ -253,15 +273,21 @@ def inject_custom_css():
             border-color: var(--verde-escuro) !important;
             background: rgba(104,231,15,0.05) !important;
         }
-        /* Botão Primário (Verde Escuro) */
+        /* Botão Primário (Verde Vibrante) */
         .stButton > button[kind="primary"] {
-            background: var(--verde-escuro) !important;
-            color: #ffffff !important;
+            background: linear-gradient(135deg, var(--verde-escuro), var(--verde-claro)) !important;
+            color: #0d1f0d !important;
+            font-weight: 800 !important;
             border: none !important;
+            box-shadow: 0 4px 14px rgba(104, 231, 15, 0.35) !important;
         }
         .stButton > button[kind="primary"]:hover {
-            background: #1a7f21 !important;
+            background: linear-gradient(135deg, #1f8f26, var(--verde-claro)) !important;
+            box-shadow: 0 6px 20px rgba(104, 231, 15, 0.55) !important;
             transform: translateY(-1px);
+        }
+        .stButton > button[kind="primary"]:active {
+            transform: translateY(0);
         }
         
         /* ===== DATAFRAME ===== */

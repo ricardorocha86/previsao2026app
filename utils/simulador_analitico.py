@@ -62,10 +62,6 @@ def _format_pair(pair: tuple[str, str], names: dict[str, str]) -> str:
     return " x ".join(names.get(team, team) for team in pair)
 
 
-def _format_team_list(team_keys: tuple[str, ...], names: dict[str, str]) -> str:
-    return ", ".join(names.get(team, team) for team in team_keys)
-
-
 def _team_name_column(dataframe: pd.DataFrame) -> str:
     for column in dataframe.columns:
         if str(column).startswith("Sele"):
@@ -225,15 +221,12 @@ def simulate_one_cup_analytics(
     for record in current_round:
         history[record["team_key"]]["Top32"] = 1
 
-    semifinalists: tuple[str, ...] = ()
     finalists: tuple[str, str] | None = None
     tracked_eliminator: tuple[str, str] | None = None
     tracked_opponents_by_stage = {}
 
     while len(current_round) > 1:
         round_size = len(current_round)
-        if round_size == 4:
-            semifinalists = tuple(sorted(record["team_key"] for record in current_round))
         if round_size == 2:
             finalists = _ordered_pair(
                 current_round[0]["team_key"],
@@ -275,7 +268,6 @@ def simulate_one_cup_analytics(
         "first_knockout_opponent": first_knockout_opponent,
         "tracked_eliminator": tracked_eliminator,
         "tracked_opponents_by_stage": tracked_opponents_by_stage,
-        "semifinalists": semifinalists,
         "finalists": finalists,
         "champion": champion,
     }
@@ -298,9 +290,13 @@ def run_detailed_simulation(
     name_column = _team_name_column(dataframe)
     team_names = dict(zip(dataframe["team_key"], dataframe[name_column]))
 
-    bottom_16 = set(
-        dataframe.sort_values("forca_com_offset", ascending=True)["team_key"].head(16)
-    )
+    # Times ordenados do mais fraco para o mais forte pelo indicador de força.
+    # bottom_16 = as 16 mais fracas (zebra pesada); mini_zebra = as 32 mais fracas (mini-zebra).
+    _weak_first = dataframe.sort_values("forca_com_offset", ascending=True)["team_key"].tolist()
+    bottom_16_order = _weak_first[:16]
+    mini_zebra_order = _weak_first[:32]
+    bottom_16 = set(bottom_16_order)
+    mini_zebra = set(mini_zebra_order)
 
     accum_np = np.zeros((len(team_keys), len(SIM_STAGE_COLUMNS)), dtype=np.int32)
     finals_counter: Counter[tuple[str, str]] = Counter()
@@ -312,7 +308,7 @@ def run_detailed_simulation(
     tracked_conditions = defaultdict(lambda: {"den": 0, "champ": 0})
     title_by_group_position = defaultdict(lambda: {"den": 0, "champ": 0})
     bottom_16_stage_counter = Counter()
-    semifinals_counter: Counter[tuple[str, ...]] = Counter()
+    mini_zebra_stage_counter = Counter()
 
     rng = np.random.default_rng()
     completed = 0
@@ -344,9 +340,6 @@ def run_detailed_simulation(
             finalists = result["finalists"]
             if finalists is not None:
                 finals_counter[finalists] += 1
-
-            if result["semifinalists"]:
-                semifinals_counter[result["semifinalists"]] += 1
 
             for stage, opponent in result["tracked_opponents_by_stage"].items():
                 tracked_stage_base[stage] += 1
@@ -388,6 +381,8 @@ def run_detailed_simulation(
             for stage in ["Top32", "Oitavas", "Quartas", "Semifinal", "Final", "Campeao"]:
                 if any(history[team_key][stage] for team_key in bottom_16):
                     bottom_16_stage_counter[stage] += 1
+                if any(history[team_key][stage] for team_key in mini_zebra):
+                    mini_zebra_stage_counter[stage] += 1
 
         completed += current_chunk
         if progress_callback is not None:
@@ -415,8 +410,9 @@ def run_detailed_simulation(
             tracked_conditions=tracked_conditions,
             title_by_group_position=title_by_group_position,
             bottom_16_stage_counter=bottom_16_stage_counter,
-            semifinals_counter=semifinals_counter,
-            bottom_16=bottom_16,
+            mini_zebra_stage_counter=mini_zebra_stage_counter,
+            bottom_16_order=bottom_16_order,
+            mini_zebra_order=mini_zebra_order,
         ),
     }
 
@@ -433,8 +429,9 @@ def build_detailed_tables(
     tracked_conditions: dict,
     title_by_group_position: dict,
     bottom_16_stage_counter: Counter,
-    semifinals_counter: Counter[tuple[str, ...]],
-    bottom_16: set[str],
+    mini_zebra_stage_counter: Counter,
+    bottom_16_order: list[str],
+    mini_zebra_order: list[str],
 ) -> dict[str, pd.DataFrame]:
     final_rows = []
     for pair, count in finals_counter.most_common():
@@ -556,26 +553,23 @@ def build_detailed_tables(
         reverse=True,
     )
 
-    bottom_rows = [
-        {
-            "Evento": f"Pelo menos uma bottom 16 chegou a {DISPLAY_STAGE_BY_HISTORY[stage]}",
-            "Probabilidade": bottom_16_stage_counter[stage] / n_sims,
-        }
-        for stage in ["Top32", "Oitavas", "Quartas", "Semifinal", "Final", "Campeao"]
-    ]
+    _zebra_stage_label = {
+        "Top32": "Top 32", "Oitavas": "Oitavas", "Quartas": "Quartas",
+        "Semifinal": "Semifinal", "Final": "Final", "Campeao": "Campeã",
+    }
 
-    bottom_list_rows = [
-        {"Bottom 16": team_names.get(team, team)}
-        for team in sorted(bottom_16, key=lambda team: team_names.get(team, team))
-    ]
+    def _surpresa_rows(counter: Counter) -> list[dict]:
+        return [
+            {
+                "Fase": _zebra_stage_label[stage],
+                "Probabilidade": counter[stage] / n_sims,
+            }
+            for stage in ["Top32", "Oitavas", "Quartas", "Semifinal", "Final", "Campeao"]
+        ]
 
-    semifinal_rows = [
-        {
-            "Semifinalistas": _format_team_list(teams, team_names),
-            "Probabilidade": count / n_sims,
-        }
-        for teams, count in semifinals_counter.most_common()
-    ]
+    def _lista_rows(order: list[str]) -> list[dict]:
+        # Mantém a ordem do indicador de força (mais fraca primeiro).
+        return [{"Seleção": team_names.get(team, team)} for team in order]
 
     return {
         "finais": pd.DataFrame(final_rows),
@@ -591,7 +585,8 @@ def build_detailed_tables(
         "eliminadores_brasil_agrupado": pd.DataFrame(eliminator_grouped_rows),
         "titulo_condicional_brasil": pd.DataFrame(conditional_rows),
         "impacto_posicao_grupo": pd.DataFrame(position_rows),
-        "bottom16_surpresa": pd.DataFrame(bottom_rows),
-        "bottom16_lista": pd.DataFrame(bottom_list_rows),
-        "semifinais": pd.DataFrame(semifinal_rows),
+        "bottom16_surpresa": pd.DataFrame(_surpresa_rows(bottom_16_stage_counter)),
+        "bottom16_lista": pd.DataFrame(_lista_rows(bottom_16_order)),
+        "minizebra_surpresa": pd.DataFrame(_surpresa_rows(mini_zebra_stage_counter)),
+        "minizebra_lista": pd.DataFrame(_lista_rows(mini_zebra_order)),
     }

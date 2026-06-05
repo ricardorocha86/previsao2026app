@@ -85,11 +85,16 @@ display_table = combined_df[
     }
 )
 
+display_table = display_table.copy()
+display_table.insert(0, "Rank", range(1, len(display_table) + 1))
+
 st.dataframe(
     display_table,
-    width='stretch',
+    use_container_width=True,
     height=520,
+    hide_index=True,
     column_config={
+        "Rank": st.column_config.NumberColumn("Rank", width=50, format="%d"),
         "Fifa": st.column_config.NumberColumn(format="%.3f"),
         "Elo": st.column_config.NumberColumn(format="%.3f"),
         "Momento": st.column_config.NumberColumn(format="%.3f"),

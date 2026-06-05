@@ -41,6 +41,69 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "dataset"
 
 
+# Emoji de bandeira por seleção (chave = coluna "Seleção" da planilha).
+# Observação: no Chrome/Edge do Windows os emojis de bandeira de país costumam
+# aparecer como o código de duas letras (ex.: "FR") em vez da bandeira; no Firefox
+# e na maioria dos navegadores mobile/macOS renderizam como bandeira.
+TEAM_FLAG_EMOJI: dict[str, str] = {
+    "México": "🇲🇽",
+    "Canadá": "🇨🇦",
+    "Estados Unidos": "🇺🇸",
+    "África do Sul": "🇿🇦",
+    "Coreia do Sul": "🇰🇷",
+    "Catar": "🇶🇦",
+    "Suíça": "🇨🇭",
+    "Brasil": "🇧🇷",
+    "Escócia": "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+    "Haiti": "🇭🇹",
+    "Marrocos": "🇲🇦",
+    "Austrália": "🇦🇺",
+    "Paraguai": "🇵🇾",
+    "Alemanha": "🇩🇪",
+    "Costa do Marfim": "🇨🇮",
+    "Curaçau": "🇨🇼",
+    "Curaçao": "🇨🇼",
+    "Equador": "🇪🇨",
+    "Holanda": "🇳🇱",
+    "Japão": "🇯🇵",
+    "Tunísia": "🇹🇳",
+    "Bélgica": "🇧🇪",
+    "Egito": "🇪🇬",
+    "Irã": "🇮🇷",
+    "Nova Zelândia": "🇳🇿",
+    "Arábia Saudita": "🇸🇦",
+    "Cabo Verde": "🇨🇻",
+    "Espanha": "🇪🇸",
+    "Uruguai": "🇺🇾",
+    "França": "🇫🇷",
+    "Noruega": "🇳🇴",
+    "Senegal": "🇸🇳",
+    "Argélia": "🇩🇿",
+    "Argentina": "🇦🇷",
+    "Áustria": "🇦🇹",
+    "Jordânia": "🇯🇴",
+    "Colômbia": "🇨🇴",
+    "Portugal": "🇵🇹",
+    "Uzbequistão": "🇺🇿",
+    "Croácia": "🇭🇷",
+    "Gana": "🇬🇭",
+    "Inglaterra": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "Panamá": "🇵🇦",
+    "Iraque": "🇮🇶",
+    "RD do Congo": "🇨🇩",
+    "Tcheca": "🇨🇿",
+    "Bósnia e Herzegovina": "🇧🇦",
+    "Turquia": "🇹🇷",
+    "Suécia": "🇸🇪",
+}
+
+
+def team_with_flag(team_name: str) -> str:
+    """Devolve o nome da seleção precedido pelo emoji de bandeira, quando houver."""
+    flag = TEAM_FLAG_EMOJI.get(team_name)
+    return f"{flag} {team_name}" if flag else team_name
+
+
 @dataclass
 class ModelParams:
     """Parâmetros de força + modelo compartilhados pela barra lateral."""

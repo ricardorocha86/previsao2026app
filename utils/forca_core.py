@@ -304,23 +304,24 @@ def render_param_sidebar() -> ModelParams:
 
     with st.sidebar:
         st.markdown("#### Composição do Indicador de Força")
-        col1, col2 = st.columns(2)
-        with col1:
-            weight_fifa = st.slider("FIFA", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_fifa"]), step=0.01, key="param_weight_fifa")
-        with col2:
+        
+        # Primeira linha (3 colunas): Ranking ELO, Ranking FIFA, Mercado
+        col_w1, col_w2, col_w3 = st.columns(3)
+        with col_w1:
+            weight_elo = st.slider("Ranking ELO", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_elo"]), step=0.01, key="param_weight_elo")
+        with col_w2:
+            weight_fifa = st.slider("Ranking FIFA", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_fifa"]), step=0.01, key="param_weight_fifa")
+        with col_w3:
             weight_market = st.slider("Mercado", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_market"]), step=0.01, key="param_weight_market")
 
-        col3, col4 = st.columns(2)
-        with col3:
-            weight_elo = st.slider("ELO", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_elo"]), step=0.01, key="param_weight_elo")
-        with col4:
+        # Segunda linha (3 colunas): Momento, Histórico, Anfitrião
+        col_w4, col_w5, col_w6 = st.columns(3)
+        with col_w4:
             weight_momentum = st.slider("Momento", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_momentum"]), step=0.01, key="param_weight_momentum")
-
-        col5, col6 = st.columns(2)
-        with col5:
-            weight_history = st.slider("Histórico Copas", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_history"]), step=0.01, key="param_weight_history")
-        with col6:
-            weight_host = st.slider("Anfitrião (Sede)", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_host"]), step=0.01, key="param_weight_host")
+        with col_w5:
+            weight_history = st.slider("Histórico", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_history"]), step=0.01, key="param_weight_history")
+        with col_w6:
+            weight_host = st.slider("Anfitrião", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_host"]), step=0.01, key="param_weight_host")
 
         st.markdown("---")
         st.markdown("#### Parâmetros do Modelo")
@@ -333,12 +334,41 @@ def render_param_sidebar() -> ModelParams:
         with col9:
             elasticidade = st.slider("Elasticidade", min_value=0.1, max_value=5.0, value=float(st.session_state["model_sidebar_params"]["param_elasticidade"]), step=0.01, key="param_elasticidade")
 
-        col10, col11 = st.columns([2, 3])
-        with col10:
-            st.markdown("<div style='margin-top: 2rem;'></div>", unsafe_allow_html=True)
-            usar_dixon_coles = st.toggle("Dixon-Coles", value=bool(st.session_state["model_sidebar_params"]["param_usar_dixon_coles"]), key="param_usar_dixon_coles")
-        with col11:
-            rho_dixon_coles = st.slider("Parâmetro rho", min_value=-0.30, max_value=0.00, value=float(st.session_state["model_sidebar_params"]["param_rho_dixon_coles"]), step=0.01, disabled=not usar_dixon_coles, key="param_rho_dixon_coles")
+        # Dixon-Coles e rho desativados da interface (mantidos internamente com usar_dixon_coles=True e rho=-0.13)
+        # Descomente o bloco abaixo caso queira reativar os widgets na interface no futuro:
+        # col10, col11 = st.columns([2, 3])
+        # with col10:
+        #     st.markdown("<div style='margin-top: 2rem;'></div>", unsafe_allow_html=True)
+        #     usar_dixon_coles = st.toggle("Dixon-Coles", value=bool(st.session_state["model_sidebar_params"]["param_usar_dixon_coles"]), key="param_usar_dixon_coles")
+        # with col11:
+        #     rho_dixon_coles = st.slider("Parâmetro rho", min_value=-0.30, max_value=0.00, value=float(st.session_state["model_sidebar_params"]["param_rho_dixon_coles"]), step=0.01, disabled=not usar_dixon_coles, key="param_rho_dixon_coles")
+        
+        usar_dixon_coles = True
+        rho_dixon_coles = -0.13
+
+        st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+        if st.button("🔄 Resetar para Valores Iniciais", key="reset_model_params_btn", use_container_width=True):
+            st.session_state["model_sidebar_params"] = {
+                "param_weight_fifa": DEFAULT_WEIGHT_FIFA,
+                "param_weight_market": DEFAULT_WEIGHT_MARKET,
+                "param_weight_elo": DEFAULT_WEIGHT_ELO,
+                "param_weight_momentum": DEFAULT_WEIGHT_MOMENTUM,
+                "param_weight_history": DEFAULT_WEIGHT_HISTORY,
+                "param_weight_host": DEFAULT_WEIGHT_HOST,
+                "param_media_gols": DEFAULT_MEDIA_GOLS,
+                "param_offset": DEFAULT_OFFSET,
+                "param_elasticidade": DEFAULT_ELASTICIDADE,
+                "param_usar_dixon_coles": DEFAULT_USAR_DIXON_COLES,
+                "param_rho_dixon_coles": DEFAULT_RHO_DIXON_COLES,
+            }
+            # Remove chaves do session_state dos sliders para recarregarem os novos valores padrão
+            for key in st.session_state["model_sidebar_params"].keys():
+                if key in st.session_state:
+                    del st.session_state[key]
+            try:
+                st.rerun()
+            except AttributeError:
+                st.experimental_rerun()
 
     # Sincroniza de volta das chaves atuais do session_state para o dicionário persistente
     for key in st.session_state["model_sidebar_params"].keys():

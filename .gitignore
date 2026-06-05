@@ -8,7 +8,8 @@ venv/
 # Arquivos temporários
 temp.xlsx
 ~$*.xlsx
-resultados/
+resultados/*
+!resultados/simulacao_previsao_esportiva_(pre-convocacao).xlsx
 *.log
 
 # Claude Code

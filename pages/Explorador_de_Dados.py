@@ -38,10 +38,10 @@ df_raw, dataset_name = load_enriched_dataset()
 # ============ HEADER ============
 st.markdown("## 📋 Dados — Base Enriquecida")
 
-# ============ FILTROS E COLUNAS ============
-col_filter_1, col_filter_2, col_filter_3, col_filter_4 = st.columns([1, 1, 1, 1.8])
-
-with col_filter_1:
+# ============ SIDEBAR FILTROS E COLUNAS ============
+with st.sidebar:
+    st.markdown("### Filtros & Visualização")
+    
     conf_col = next(
         (c for c in ["Confederação", "Confederacao"] if c in df_raw.columns), None
     )
@@ -51,21 +51,18 @@ with col_filter_1:
     else:
         filtro_conf = "Todas"
 
-with col_filter_2:
     if "Grupo" in df_raw.columns:
         all_groups = ["Todos"] + sorted(df_raw["Grupo"].dropna().unique().tolist())
         filtro_grupo = st.selectbox("Grupo", all_groups, key="dados_filtro_grupo")
     else:
         filtro_grupo = "Todos"
 
-with col_filter_3:
     if "Continente_Geo" in df_raw.columns:
         all_continents = ["Todos"] + sorted(df_raw["Continente_Geo"].dropna().unique().tolist())
         filtro_cont = st.selectbox("Continente", all_continents, key="dados_filtro_cont")
     else:
         filtro_cont = "Todos"
 
-with col_filter_4:
     DEFAULT_DISPLAY = [
         "Seleção",
         "FIFA_Current_Points",

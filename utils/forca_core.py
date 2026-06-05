@@ -325,19 +325,19 @@ def render_param_sidebar() -> ModelParams:
         st.markdown("---")
         st.markdown("#### Parâmetros do Modelo")
 
-        media_gols = st.slider("Média de gols da partida", min_value=0.5, max_value=5.0, value=float(st.session_state["model_sidebar_params"]["param_media_gols"]), step=0.05, key="param_media_gols")
-
-        col7, col8 = st.columns(2)
+        col7, col8, col9 = st.columns(3)
         with col7:
-            offset = st.slider("Offset", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_offset"]), step=0.01, key="param_offset")
+            media_gols = st.slider("Média de gols", min_value=0.5, max_value=5.0, value=float(st.session_state["model_sidebar_params"]["param_media_gols"]), step=0.05, key="param_media_gols")
         with col8:
+            offset = st.slider("Offset", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_offset"]), step=0.01, key="param_offset")
+        with col9:
             elasticidade = st.slider("Elasticidade", min_value=0.1, max_value=5.0, value=float(st.session_state["model_sidebar_params"]["param_elasticidade"]), step=0.01, key="param_elasticidade")
 
-        col9, col10 = st.columns([2, 3])
-        with col9:
+        col10, col11 = st.columns([2, 3])
+        with col10:
             st.markdown("<div style='margin-top: 2rem;'></div>", unsafe_allow_html=True)
             usar_dixon_coles = st.toggle("Dixon-Coles", value=bool(st.session_state["model_sidebar_params"]["param_usar_dixon_coles"]), key="param_usar_dixon_coles")
-        with col10:
+        with col11:
             rho_dixon_coles = st.slider("Parâmetro rho", min_value=-0.30, max_value=0.00, value=float(st.session_state["model_sidebar_params"]["param_rho_dixon_coles"]), step=0.01, disabled=not usar_dixon_coles, key="param_rho_dixon_coles")
 
     # Sincroniza de volta das chaves atuais do session_state para o dicionário persistente

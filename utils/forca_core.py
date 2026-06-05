@@ -323,7 +323,6 @@ def render_param_sidebar() -> ModelParams:
         with col_w6:
             weight_host = st.slider("Anfitrião", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_host"]), step=0.01, key="param_weight_host")
 
-        st.markdown("---")
         st.markdown("#### Parâmetros do Modelo")
 
         col7, col8, col9 = st.columns(3)

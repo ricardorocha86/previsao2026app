@@ -62,7 +62,7 @@ def inject_custom_css():
             --cinza-claro: #F1F1F1;
             --cinza-escuro: #2E2E2E;
 
-            --bg-primary: #12150F;
+            --bg-primary: #131313;
             --bg-card: #1A1F19;
             --bg-card-strong: #222a21;
             --text-primary: #E0E4DE;
@@ -85,7 +85,7 @@ def inject_custom_css():
         
         /* ===== SIDEBAR ===== */
         section[data-testid="stSidebar"] {
-            background-color: #0E120C !important;
+            background-color: #0D0D0D !important;
             background-image: none !important;
             border-right: 1px solid rgba(104, 231, 15, 0.1);
         }

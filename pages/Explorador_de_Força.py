@@ -878,9 +878,6 @@ if selected_option == "Nenhuma (Simular em Tempo Real)":
 else:
     run_simulation = False
 
-st.markdown("---")
-st.markdown("### Simulação")
-
 if "explorador_sim_display" not in st.session_state:
     st.session_state["explorador_sim_display"] = None
 if "explorador_detailed_tables" not in st.session_state:
@@ -895,8 +892,13 @@ if "explorador_loaded_filename" not in st.session_state:
     st.session_state["explorador_loaded_filename"] = None
 
 loaded_filename = st.session_state.get("explorador_loaded_filename")
+
 if loaded_filename:
     st.info(f"ℹ️ **Exibindo resultados da simulação carregada:** `{loaded_filename}`")
+else:
+    st.markdown("---")
+
+st.markdown("### Resultados da Simulação")
 
 if run_simulation:
     sim_table, detailed_tables = run_complete_simulation_progressive(

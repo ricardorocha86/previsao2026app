@@ -815,21 +815,25 @@ SIM_COPAS_OPCOES = (
     + list(range(2000000, 10000001, 1000000))  # 2 mi → 10 mi (de 1 mi em 1 mi)
 )
 
-col_params, col_load = st.columns([2, 3])
-with col_params:
-    st.markdown("##### Ajustar e Rodar Simulação")
-    n_sims = st.select_slider(
-        "Nº de Copas",
-        options=SIM_COPAS_OPCOES,
-        value=10000,
-        format_func=_fmt_copas,
-        key="sim_n_sims_preset",
-    )
-    tipo_chaveamento = st.pills(
-        "Chaveamento", ["Sorteio Oficial", "Sorteio Aleatório"], selection_mode="single", default="Sorteio Oficial", key="sim_tipo_chaveamento"
-    )
-    if tipo_chaveamento is None:
-        tipo_chaveamento = "Sorteio Oficial"
+tab_rodar, tab_carregar = st.tabs(["⚙️ Ajustar e Rodar Nova Simulação", "📂 Carregar Simulação Oficial ou Salva"])
+
+with tab_rodar:
+    col_a, col_b = st.columns([1, 1])
+    with col_a:
+        n_sims = st.select_slider(
+            "Nº de Copas",
+            options=SIM_COPAS_OPCOES,
+            value=10000,
+            format_func=_fmt_copas,
+            key="sim_n_sims_preset",
+        )
+    with col_b:
+        tipo_chaveamento = st.pills(
+            "Chaveamento", ["Sorteio Oficial", "Sorteio Aleatório"], selection_mode="single", default="Sorteio Oficial", key="sim_tipo_chaveamento"
+        )
+        if tipo_chaveamento is None:
+            tipo_chaveamento = "Sorteio Oficial"
+
     # ETA estimado considerando ~1000 simulações por segundo
     eta_min = int(n_sims) / 1000 / 60
     eta_label = f"{eta_min:.1f}".replace(".", ",")
@@ -837,8 +841,7 @@ with col_params:
         f"🚀 Rodar simulação (ETA: {eta_label}min)", type="primary", use_container_width=True
     )
 
-with col_load:
-    st.markdown("##### ou Carregar Resultados Oficiais / Salvos")
+with tab_carregar:
     resultados_dir = BASE_DIR / "resultados"
     os.makedirs(resultados_dir, exist_ok=True)
     saved_files = [f for f in os.listdir(resultados_dir) if f.endswith(".xlsx")]
@@ -853,18 +856,22 @@ with col_load:
             key=lambda x: ("pre-torneio" in x.lower() or "oficial" in x.lower(), x),
             reverse=True
         )
-        selected_file = st.selectbox(
-            "Selecione uma simulação salva:",
-            options=saved_files_sorted,
-            help="Carregue uma simulação completa previamente executada para visualizar as abas imediatamente.",
-            key="sim_selected_file_to_load"
-        )
-
-        load_simulation = st.button(
-            "📥 Carregar Simulação Selecionada",
-            type="secondary",
-            use_container_width=True
-        )
+        col_sel, col_btn = st.columns([3, 1])
+        with col_sel:
+            selected_file = st.selectbox(
+                "Selecione uma simulação salva:",
+                options=saved_files_sorted,
+                help="Carregue uma simulação completa previamente executada para visualizar as abas imediatamente.",
+                key="sim_selected_file_to_load"
+            )
+        with col_btn:
+            # Spacer to vertically align button with selectbox input
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            load_simulation = st.button(
+                "📥 Carregar",
+                type="primary",
+                use_container_width=True
+            )
 
         if load_simulation:
             file_path = resultados_dir / selected_file

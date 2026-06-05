@@ -854,6 +854,12 @@ SIM_COPAS_OPCOES = (
     + list(range(2000000, 10000001, 1000000))  # 2 mi → 10 mi (de 1 mi em 1 mi)
 )
 
+def reset_simulation_radio():
+    st.session_state["sidebar_simulation_radio"] = "Nenhuma (Simular em Tempo Real)"
+    if "explorador_loaded_filename" in st.session_state:
+        st.session_state["explorador_loaded_filename"] = None
+
+
 col_params, _ = st.columns([2, 3])
 with col_params:
     n_sims = st.select_slider(
@@ -872,7 +878,10 @@ with col_params:
     eta_min = int(n_sims) / 1000 / 60
     eta_label = f"{eta_min:.1f}".replace(".", ",")
     run_simulation = st.button(
-        f"🚀 Rodar simulação (ETA: {eta_label}min)", type="primary", use_container_width=True
+        f"🚀 Rodar simulação (ETA: {eta_label}min)",
+        type="primary",
+        use_container_width=True,
+        on_click=reset_simulation_radio,
     )
 
 st.markdown("---")
@@ -896,9 +905,6 @@ if loaded_filename:
     st.info(f"ℹ️ **Exibindo resultados da simulação carregada:** `{loaded_filename}`")
 
 if run_simulation:
-    st.session_state["sidebar_simulation_radio"] = "Nenhuma (Simular em Tempo Real)"
-    if "explorador_loaded_filename" in st.session_state:
-        st.session_state["explorador_loaded_filename"] = None
     sim_table, detailed_tables = run_complete_simulation_progressive(
         dataframe=combined_df,
         media_gols=media_gols,

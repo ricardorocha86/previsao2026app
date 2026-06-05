@@ -1289,4 +1289,5 @@ with _col_dl:
         use_container_width=True,
         disabled=_sim_bytes is None,
         help="Disponível após rodar uma simulação." if _sim_bytes is None else None,
+        type="primary" if _sim_bytes is not None else "secondary",
     )

@@ -273,20 +273,21 @@ def inject_custom_css():
             border-color: var(--verde-escuro) !important;
             background: rgba(104,231,15,0.05) !important;
         }
-        /* Botão Primário (Verde Vibrante) */
-        .stButton > button[kind="primary"] {
-            background: linear-gradient(135deg, var(--verde-escuro), var(--verde-claro)) !important;
-            color: #0d1f0d !important;
-            font-weight: 800 !important;
-            border: none !important;
-            box-shadow: 0 4px 14px rgba(104, 231, 15, 0.35) !important;
+        /* Botão Primário (Verde Menos Intenso) */
+        .stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {
+            background: linear-gradient(135deg, var(--verde-escuro), #1c8522) !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2) !important;
         }
-        .stButton > button[kind="primary"]:hover {
-            background: linear-gradient(135deg, #1f8f26, var(--verde-claro)) !important;
-            box-shadow: 0 6px 20px rgba(104, 231, 15, 0.55) !important;
+        .stButton > button[kind="primary"]:hover, .stDownloadButton > button[kind="primary"]:hover {
+            background: linear-gradient(135deg, #1b7a20, #155f19) !important;
+            box-shadow: 0 4px 10px rgba(32, 153, 39, 0.15) !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
             transform: translateY(-1px);
         }
-        .stButton > button[kind="primary"]:active {
+        .stButton > button[kind="primary"]:active, .stDownloadButton > button[kind="primary"]:active {
             transform: translateY(0);
         }
         

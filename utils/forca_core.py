@@ -345,7 +345,7 @@ def render_param_sidebar() -> ModelParams:
         usar_dixon_coles = True
         rho_dixon_coles = -0.13
 
-        st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="reset-btn-container">', unsafe_allow_html=True)
         if st.button("🔄 Resetar para Valores Iniciais", key="reset_model_params_btn", use_container_width=True):
             st.session_state["model_sidebar_params"] = {
                 "param_weight_fifa": DEFAULT_WEIGHT_FIFA,
@@ -368,6 +368,7 @@ def render_param_sidebar() -> ModelParams:
                 st.rerun()
             except AttributeError:
                 st.experimental_rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # Sincroniza de volta das chaves atuais do session_state para o dicionário persistente
     for key in st.session_state["model_sidebar_params"].keys():

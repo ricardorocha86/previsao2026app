@@ -91,6 +91,75 @@ def inject_custom_css():
         section[data-testid="stSidebar"] * {
             color: #e8efe8 !important;
         }
+
+        /* Customização dos Subheaders da Sidebar */
+        section[data-testid="stSidebar"] h4 {
+            color: var(--verde-claro) !important;
+            font-family: 'Exo 2', sans-serif !important;
+            font-weight: 700 !important;
+            font-size: 0.9rem !important;
+            letter-spacing: 0.5px !important;
+            text-transform: uppercase !important;
+            border-bottom: 1px solid rgba(104, 231, 15, 0.15) !important;
+            padding-bottom: 6px !important;
+            margin-top: 1.8rem !important;
+            margin-bottom: 0.8rem !important;
+        }
+        
+        /* Customização dos Labels dos Widgets na Sidebar */
+        section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+            color: var(--text-secondary) !important;
+            font-weight: 600 !important;
+            font-size: 0.8rem !important;
+            letter-spacing: 0.2px !important;
+            margin-bottom: 2px !important;
+        }
+
+        /* Customização dos Sliders na Sidebar */
+        section[data-testid="stSidebar"] .stSlider {
+            padding-bottom: 0.5rem !important;
+        }
+        section[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div > div {
+            height: 4px !important;
+            background: linear-gradient(90deg, var(--verde-escuro), var(--verde-claro)) !important;
+            border-radius: 2px !important;
+        }
+        section[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] [role="slider"] {
+            background: #ffffff !important;
+            border: 2px solid var(--verde-claro) !important;
+            box-shadow: 0 0 6px rgba(104, 231, 15, 0.4) !important;
+            width: 12px !important;
+            height: 12px !important;
+            transition: transform 0.1s ease !important;
+        }
+        section[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] [role="slider"]:hover {
+            transform: scale(1.2) !important;
+        }
+        
+        /* Marcas numéricas do Slider */
+        section[data-testid="stSidebar"] .stSlider [data-testid="stWidgetLabel"] + div div {
+            color: var(--text-muted) !important;
+            font-size: 0.75rem !important;
+        }
+
+        /* Botão de Reset na Sidebar */
+        .reset-btn-container button {
+            background-color: rgba(255, 207, 38, 0.04) !important;
+            border: 1px solid rgba(255, 207, 38, 0.25) !important;
+            color: var(--amarelo) !important;
+            font-weight: 700 !important;
+            font-size: 0.85rem !important;
+            border-radius: 8px !important;
+            padding: 0.5rem 1rem !important;
+            transition: all 0.25s ease !important;
+            margin-top: 1rem !important;
+        }
+        .reset-btn-container button:hover {
+            background-color: rgba(255, 207, 38, 0.12) !important;
+            border-color: var(--amarelo) !important;
+            box-shadow: 0 0 8px rgba(255, 207, 38, 0.25) !important;
+            color: #ffffff !important;
+        }
         
         /* Sliders e Checkboxes - REMOVER VERMELHO */
         [style*="rgb(255, 75, 75)"], [style*="#ff4b4b"], [style*="rgb(255,75,75)"],

@@ -785,6 +785,45 @@ params = render_param_sidebar()
 base_df = load_force_dataframe()
 combined_df, weight_sum = build_combined(base_df, params)
 
+# --- Sidebar Loader Logic ---
+resultados_dir = BASE_DIR / "resultados"
+os.makedirs(resultados_dir, exist_ok=True)
+saved_files = [f for f in os.listdir(resultados_dir) if f.endswith(".xlsx")]
+saved_files_sorted = sorted(saved_files, key=lambda x: ("pre-torneio" in x.lower() or "oficial" in x.lower(), x), reverse=True)
+radio_options = ["Nenhuma (Simular em Tempo Real)"] + saved_files_sorted
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📂 Simulação Oficial")
+
+# Determine default index
+default_idx = 0
+loaded_filename = st.session_state.get("explorador_loaded_filename")
+if loaded_filename and loaded_filename in radio_options:
+    default_idx = radio_options.index(loaded_filename)
+
+selected_option = st.sidebar.radio(
+    "Carregar resultados pré-calculados:",
+    options=radio_options,
+    index=default_idx,
+    key="sidebar_simulation_radio"
+)
+
+if selected_option != "Nenhuma (Simular em Tempo Real)":
+    if st.session_state.get("explorador_loaded_filename") != selected_option:
+        file_path = resultados_dir / selected_option
+        if load_saved_simulation(file_path, combined_df):
+            st.rerun()
+else:
+    if st.session_state.get("explorador_loaded_filename") is not None:
+        st.session_state["explorador_sim_display"] = None
+        st.session_state["explorador_detailed_tables"] = None
+        st.session_state["explorador_category_tables"] = None
+        st.session_state["explorador_elimination_table"] = None
+        st.session_state["explorador_group_stage_table"] = None
+        st.session_state["explorador_sim_excel_bytes"] = None
+        st.session_state["explorador_loaded_filename"] = None
+        st.rerun()
+
 if weight_sum <= 0:
     st.warning("A soma dos pesos está zerada. Ajuste ao menos um peso na barra lateral para construir a força resultante.")
 
@@ -815,64 +854,26 @@ SIM_COPAS_OPCOES = (
     + list(range(2000000, 10000001, 1000000))  # 2 mi → 10 mi (de 1 mi em 1 mi)
 )
 
-tab_rodar, tab_carregar = st.tabs(["⚙️ Ajustar e Rodar Nova Simulação", "📂 Carregar Simulação Oficial"])
-
-with tab_rodar:
-    col_params, _ = st.columns([2, 3])
-    with col_params:
-        n_sims = st.select_slider(
-            "Nº de Copas",
-            options=SIM_COPAS_OPCOES,
-            value=10000,
-            format_func=_fmt_copas,
-            key="sim_n_sims_preset",
-        )
-        tipo_chaveamento = st.pills(
-            "Chaveamento", ["Sorteio Oficial", "Sorteio Aleatório"], selection_mode="single", default="Sorteio Oficial", key="sim_tipo_chaveamento"
-        )
-        if tipo_chaveamento is None:
-            tipo_chaveamento = "Sorteio Oficial"
-        # ETA estimado considerando ~1000 simulações por segundo
-        eta_min = int(n_sims) / 1000 / 60
-        eta_label = f"{eta_min:.1f}".replace(".", ",")
-        run_simulation = st.button(
-            f"🚀 Rodar simulação (ETA: {eta_label}min)", type="primary", use_container_width=True
-        )
-
-with tab_carregar:
-    resultados_dir = BASE_DIR / "resultados"
-    os.makedirs(resultados_dir, exist_ok=True)
-    saved_files = [f for f in os.listdir(resultados_dir) if f.endswith(".xlsx")]
-
-    if not saved_files:
-        st.info("Nenhum arquivo `.xlsx` encontrado na pasta `resultados/`.")
-        load_simulation = False
-    else:
-        # Colocar o arquivo oficial ou mais recente primeiro
-        saved_files_sorted = sorted(
-            saved_files,
-            key=lambda x: ("pre-torneio" in x.lower() or "oficial" in x.lower(), x),
-            reverse=True
-        )
-        col_load, _ = st.columns([2, 3])
-        with col_load:
-            selected_file = st.selectbox(
-                "Selecione uma simulação salva:",
-                options=saved_files_sorted,
-                help="Carregue uma simulação completa previamente executada para visualizar as abas imediatamente.",
-                key="sim_selected_file_to_load"
-            )
-            load_simulation = st.button(
-                "📥 Carregar Simulação Selecionada",
-                type="primary",
-                use_container_width=True
-            )
-
-        if load_simulation:
-            file_path = resultados_dir / selected_file
-            if load_saved_simulation(file_path, combined_df):
-                st.success(f"Resultados de '{selected_file}' carregados com sucesso!")
-                st.rerun()
+col_params, _ = st.columns([2, 3])
+with col_params:
+    n_sims = st.select_slider(
+        "Nº de Copas",
+        options=SIM_COPAS_OPCOES,
+        value=10000,
+        format_func=_fmt_copas,
+        key="sim_n_sims_preset",
+    )
+    tipo_chaveamento = st.pills(
+        "Chaveamento", ["Sorteio Oficial", "Sorteio Aleatório"], selection_mode="single", default="Sorteio Oficial", key="sim_tipo_chaveamento"
+    )
+    if tipo_chaveamento is None:
+        tipo_chaveamento = "Sorteio Oficial"
+    # ETA estimado considerando ~1000 simulações por segundo
+    eta_min = int(n_sims) / 1000 / 60
+    eta_label = f"{eta_min:.1f}".replace(".", ",")
+    run_simulation = st.button(
+        f"🚀 Rodar simulação (ETA: {eta_label}min)", type="primary", use_container_width=True
+    )
 
 st.markdown("---")
 st.markdown("### Simulação")
@@ -895,6 +896,7 @@ if loaded_filename:
     st.info(f"ℹ️ **Exibindo resultados da simulação carregada:** `{loaded_filename}`")
 
 if run_simulation:
+    st.session_state["sidebar_simulation_radio"] = "Nenhuma (Simular em Tempo Real)"
     if "explorador_loaded_filename" in st.session_state:
         st.session_state["explorador_loaded_filename"] = None
     sim_table, detailed_tables = run_complete_simulation_progressive(

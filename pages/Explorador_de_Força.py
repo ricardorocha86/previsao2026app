@@ -619,6 +619,154 @@ def run_complete_simulation_progressive(
     return sim_table, detailed_result["tables"]
 
 
+def load_saved_simulation(file_path: str | os.PathLike, combined_df: pd.DataFrame) -> bool:
+    import unicodedata
+
+    def normalize_str(s: str) -> str:
+        return "".join(
+            c for c in unicodedata.normalize("NFD", s)
+            if unicodedata.category(c) != "Mn"
+        ).lower()
+
+    def find_sheet(sheet_names, target_normalized):
+        for name in sheet_names:
+            if normalize_str(name) == target_normalized:
+                return name
+        for name in sheet_names:
+            if target_normalized in normalize_str(name):
+                return name
+        return None
+
+    try:
+        xls = pd.ExcelFile(file_path)
+        sheet_names = xls.sheet_names
+
+        sim_sheet = find_sheet(sheet_names, "simulacoes")
+        if not sim_sheet:
+            st.error("Planilha 'Simulações' não encontrada no arquivo Excel.")
+            return False
+
+        sim_display = pd.read_excel(xls, sim_sheet)
+
+        # Normalizar colunas de sim_display
+        col_mapping = {
+            "selecao": "Seleção",
+            "1 grupo": "1º Grupo",
+            "2 grupo": "2º Grupo",
+            "3 grupo": "3º Grupo",
+            "4 grupo": "4º Grupo",
+            "top 32": "Top 32",
+            "oitavas": "Oitavas",
+            "quartas": "Quartas",
+            "semi": "Semi",
+            "final": "Final",
+            "campeao": "Campeão",
+        }
+        new_cols = {}
+        for col in sim_display.columns:
+            norm_col = normalize_str(str(col))
+            if norm_col in col_mapping:
+                new_cols[col] = col_mapping[norm_col]
+        sim_display = sim_display.rename(columns=new_cols)
+
+        # Garantir a presença de Seleção
+        if "Seleção" not in sim_display.columns:
+            for col in sim_display.columns:
+                if "selec" in normalize_str(str(col)):
+                    sim_display = sim_display.rename(columns={col: "Seleção"})
+                    break
+
+        # Reconstruir sim_table para gerar as tabelas agregadas caso necessário
+        sim_table = pd.DataFrame()
+        sim_table["Seleção"] = sim_display["Seleção"]
+
+        team_key_map = dict(zip(combined_df["Seleção"], combined_df["team_key"]))
+        sim_table["team_key"] = sim_table["Seleção"].map(lambda x: team_key_map.get(x, x))
+
+        forca_map = dict(zip(combined_df["team_key"], combined_df["forca_com_offset"]))
+        sim_table["forca_com_offset"] = sim_table["team_key"].map(lambda x: forca_map.get(x, 0.0))
+
+        mapping_rev = {
+            "pos_1_pct": "1º Grupo",
+            "pos_2_pct": "2º Grupo",
+            "pos_3_pct": "3º Grupo",
+            "pos_4_pct": "4º Grupo",
+            "Top32_pct": "Top 32",
+            "Oitavas_pct": "Oitavas",
+            "Quartas_pct": "Quartas",
+            "Semifinal_pct": "Semi",
+            "Final_pct": "Final",
+            "Campeao_pct": "Campeão",
+        }
+        for dest, src in mapping_rev.items():
+            if src in sim_display.columns:
+                val = sim_display[src]
+                if val.max() > 1.0:
+                    sim_table[dest] = val / 100.0
+                else:
+                    sim_table[dest] = val
+            else:
+                sim_table[dest] = 0.0
+
+        # Gerar tabelas de categoria e de eliminação a partir da sim_table
+        elimination_table = build_elimination_table(sim_table)
+        group_stage_table = build_group_stage_table(sim_table, combined_df)
+        category_tables = build_category_tables(sim_table, combined_df)
+
+        # Reconstruir detailed_tables
+        detailed_tables = {}
+        sheet_mapping = {
+            "Finais": "finais",
+            "Brasil 1o Top32": "brasil_1o_grupo_top32",
+            "Brasil 2o Top32": "brasil_2o_grupo_top32",
+            "Brasil 3o Top32": "brasil_3o_grupo_top32",
+            "Brasil Adv 16avos": "brasil_adversarios_16avos",
+            "Brasil Adv Oitavas": "brasil_adversarios_oitavas",
+            "Brasil Adv Quartas": "brasil_adversarios_quartas",
+            "Brasil Adv Semi": "brasil_adversarios_semifinal",
+            "Brasil Adv Final": "brasil_adversarios_final",
+            "Eliminadores Brasil": "eliminadores_brasil",
+            "Carrascos Brasil": "eliminadores_brasil_agrupado",
+            "Titulo Cond Brasil": "titulo_condicional_brasil",
+            "Impacto Pos Grupo": "impacto_posicao_grupo",
+            "Bottom16 Surpresa": "bottom16_surpresa",
+            "Bottom16 Lista": "bottom16_lista",
+            "MiniZebra Surpresa": "minizebra_surpresa",
+            "MiniZebra Lista": "minizebra_lista",
+        }
+
+        has_any_detailed = False
+        for sheet_name, dict_key in sheet_mapping.items():
+            norm_target = normalize_str(sheet_name)
+            found_sheet = find_sheet(sheet_names, norm_target)
+            if found_sheet:
+                df_sheet = pd.read_excel(xls, found_sheet)
+                df_sheet = df_sheet.rename(columns={
+                    "Selecao": "Seleção",
+                    "Condicao": "Condição",
+                })
+                detailed_tables[dict_key] = df_sheet
+                has_any_detailed = True
+            else:
+                detailed_tables[dict_key] = pd.DataFrame()
+
+        with open(file_path, "rb") as f:
+            excel_bytes = f.read()
+
+        st.session_state["explorador_sim_display"] = sim_display
+        st.session_state["explorador_detailed_tables"] = detailed_tables if has_any_detailed else None
+        st.session_state["explorador_category_tables"] = category_tables
+        st.session_state["explorador_elimination_table"] = elimination_table
+        st.session_state["explorador_group_stage_table"] = group_stage_table
+        st.session_state["explorador_sim_excel_bytes"] = excel_bytes
+        st.session_state["explorador_loaded_filename"] = os.path.basename(file_path)
+
+        return True
+    except Exception as e:
+        st.error(f"Erro ao carregar simulação: {e}")
+        return False
+
+
 inject_custom_css()
 
 st.markdown("## Simulação Copa do Mundo 2026")
@@ -667,8 +815,9 @@ SIM_COPAS_OPCOES = (
     + list(range(2000000, 10000001, 1000000))  # 2 mi → 10 mi (de 1 mi em 1 mi)
 )
 
-col_params, _ = st.columns([2, 3])
+col_params, col_load = st.columns([2, 3])
 with col_params:
+    st.markdown("##### Ajustar e Rodar Simulação")
     n_sims = st.select_slider(
         "Nº de Copas",
         options=SIM_COPAS_OPCOES,
@@ -688,6 +837,41 @@ with col_params:
         f"🚀 Rodar simulação (ETA: {eta_label}min)", type="primary", use_container_width=True
     )
 
+with col_load:
+    st.markdown("##### ou Carregar Resultados Oficiais / Salvos")
+    resultados_dir = BASE_DIR / "resultados"
+    os.makedirs(resultados_dir, exist_ok=True)
+    saved_files = [f for f in os.listdir(resultados_dir) if f.endswith(".xlsx")]
+
+    if not saved_files:
+        st.info("Nenhum arquivo `.xlsx` encontrado na pasta `resultados/`.")
+        load_simulation = False
+    else:
+        # Colocar o arquivo oficial ou mais recente primeiro
+        saved_files_sorted = sorted(
+            saved_files,
+            key=lambda x: ("pre-torneio" in x.lower() or "oficial" in x.lower(), x),
+            reverse=True
+        )
+        selected_file = st.selectbox(
+            "Selecione uma simulação salva:",
+            options=saved_files_sorted,
+            help="Carregue uma simulação completa previamente executada para visualizar as abas imediatamente.",
+            key="sim_selected_file_to_load"
+        )
+
+        load_simulation = st.button(
+            "📥 Carregar Simulação Selecionada",
+            type="secondary",
+            use_container_width=True
+        )
+
+        if load_simulation:
+            file_path = resultados_dir / selected_file
+            if load_saved_simulation(file_path, combined_df):
+                st.success(f"Resultados de '{selected_file}' carregados com sucesso!")
+                st.rerun()
+
 st.markdown("---")
 st.markdown("### Simulação")
 
@@ -701,8 +885,16 @@ if "explorador_elimination_table" not in st.session_state:
     st.session_state["explorador_elimination_table"] = None
 if "explorador_group_stage_table" not in st.session_state:
     st.session_state["explorador_group_stage_table"] = None
+if "explorador_loaded_filename" not in st.session_state:
+    st.session_state["explorador_loaded_filename"] = None
+
+loaded_filename = st.session_state.get("explorador_loaded_filename")
+if loaded_filename:
+    st.info(f"ℹ️ **Exibindo resultados da simulação carregada:** `{loaded_filename}`")
 
 if run_simulation:
+    if "explorador_loaded_filename" in st.session_state:
+        st.session_state["explorador_loaded_filename"] = None
     sim_table, detailed_tables = run_complete_simulation_progressive(
         dataframe=combined_df,
         media_gols=media_gols,

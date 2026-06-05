@@ -16,7 +16,7 @@ explorador_forca = st.Page("pages/Explorador_de_Força.py", title="Simulação C
 ao_vivo = st.Page("pages/Simulação_Ao_Vivo.py", title="Simulação Ao Vivo da Copa", icon="⚽")
 
 # ============ NAVEGAÇÃO ============
-pg = st.navigation([datasets, indicador_forca, partida, explorador_forca, ao_vivo])
+pg = st.navigation([explorador_forca, ao_vivo, partida, indicador_forca, datasets])
 
 # ============ EXECUTAR PÁGINA SELECIONADA ============
 pg.run()

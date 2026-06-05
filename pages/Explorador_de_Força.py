@@ -835,54 +835,48 @@ tipo_simulacao = "Completa"
 if "explorador_sim_excel_bytes" not in st.session_state:
     st.session_state["explorador_sim_excel_bytes"] = None
 
-st.markdown("### Parâmetros da Simulação")
-
-
-def _fmt_copas(v: int) -> str:
-    """Formata o nº de copas para o rótulo do slider (ex.: 500000 -> '500 mil', 5000000 -> '5 milhões')."""
-    if v >= 1_000_000:
-        mi = v / 1_000_000
-        num = f"{mi:.0f}" if mi == int(mi) else f"{mi:.1f}"
-        unidade = "milhão" if mi == 1 else "milhões"
-        return f"{num} {unidade}"
-    return f"{v // 1000} mil"
-
-
 SIM_COPAS_OPCOES = (
     list(range(10000, 100001, 10000))        # 10 mil → 100 mil (de 10 mil em 10 mil)
     + list(range(200000, 1000001, 100000))   # 200 mil → 1 mi (de 100 mil em 100 mil)
     + list(range(2000000, 10000001, 1000000))  # 2 mi → 10 mi (de 1 mi em 1 mi)
 )
 
-def reset_simulation_radio():
-    st.session_state["sidebar_simulation_radio"] = "Nenhuma (Simular em Tempo Real)"
-    if "explorador_loaded_filename" in st.session_state:
-        st.session_state["explorador_loaded_filename"] = None
+if selected_option == "Nenhuma (Simular em Tempo Real)":
+    st.markdown("### Parâmetros da Simulação")
 
+    def _fmt_copas(v: int) -> str:
+        """Formata o nº de copas para o rótulo do slider (ex.: 500000 -> '500 mil', 5000000 -> '5 milhões')."""
+        if v >= 1_000_000:
+            mi = v / 1_000_000
+            num = f"{mi:.0f}" if mi == int(mi) else f"{mi:.1f}"
+            unidade = "milhão" if mi == 1 else "milhões"
+            return f"{num} {unidade}"
+        return f"{v // 1000} mil"
 
-col_params, _ = st.columns([2, 3])
-with col_params:
-    n_sims = st.select_slider(
-        "Nº de Copas",
-        options=SIM_COPAS_OPCOES,
-        value=10000,
-        format_func=_fmt_copas,
-        key="sim_n_sims_preset",
-    )
-    tipo_chaveamento = st.pills(
-        "Chaveamento", ["Sorteio Oficial", "Sorteio Aleatório"], selection_mode="single", default="Sorteio Oficial", key="sim_tipo_chaveamento"
-    )
-    if tipo_chaveamento is None:
-        tipo_chaveamento = "Sorteio Oficial"
-    # ETA estimado considerando ~1000 simulações por segundo
-    eta_min = int(n_sims) / 1000 / 60
-    eta_label = f"{eta_min:.1f}".replace(".", ",")
-    run_simulation = st.button(
-        f"🚀 Rodar simulação (ETA: {eta_label}min)",
-        type="primary",
-        use_container_width=True,
-        on_click=reset_simulation_radio,
-    )
+    col_params, _ = st.columns([2, 3])
+    with col_params:
+        n_sims = st.select_slider(
+            "Nº de Copas",
+            options=SIM_COPAS_OPCOES,
+            value=10000,
+            format_func=_fmt_copas,
+            key="sim_n_sims_preset",
+        )
+        tipo_chaveamento = st.pills(
+            "Chaveamento", ["Sorteio Oficial", "Sorteio Aleatório"], selection_mode="single", default="Sorteio Oficial", key="sim_tipo_chaveamento"
+        )
+        if tipo_chaveamento is None:
+            tipo_chaveamento = "Sorteio Oficial"
+        # ETA estimado considerando ~1000 simulações por segundo
+        eta_min = int(n_sims) / 1000 / 60
+        eta_label = f"{eta_min:.1f}".replace(".", ",")
+        run_simulation = st.button(
+            f"🚀 Rodar simulação (ETA: {eta_label}min)",
+            type="primary",
+            use_container_width=True,
+        )
+else:
+    run_simulation = False
 
 st.markdown("---")
 st.markdown("### Simulação")

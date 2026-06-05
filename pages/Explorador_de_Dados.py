@@ -37,38 +37,9 @@ df_raw, dataset_name = load_enriched_dataset()
 
 # ============ HEADER ============
 st.markdown("## 📋 Dados — Base Enriquecida")
-st.caption(f"Fonte: `{dataset_name}` · {len(df_raw)} seleções · {len(df_raw.columns)} variáveis")
 
-# ============ MÉTRICAS RESUMO ============
-col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
-
-with col_m1:
-    st.metric("🌍 Seleções", len(df_raw))
-with col_m2:
-    st.metric("🏆 Grupos", df_raw["Grupo"].nunique() if "Grupo" in df_raw.columns else "—")
-with col_m3:
-    if "Valor_Mercado_Milhoes_EUR" in df_raw.columns:
-        total_market = pd.to_numeric(df_raw["Valor_Mercado_Milhoes_EUR"], errors="coerce").sum()
-        st.metric("💰 Valor Total", f"€{total_market:,.0f}M")
-    else:
-        st.metric("💰 Valor Total", "—")
-with col_m4:
-    if "ELO_Rating" in df_raw.columns:
-        avg_elo = pd.to_numeric(df_raw["ELO_Rating"], errors="coerce").mean()
-        st.metric("📈 ELO Médio", f"{avg_elo:.0f}")
-    else:
-        st.metric("📈 ELO Médio", "—")
-with col_m5:
-    if "FIFA_Current_Points" in df_raw.columns:
-        avg_fifa = pd.to_numeric(df_raw["FIFA_Current_Points"], errors="coerce").mean()
-        st.metric("⭐ FIFA Pts Médio", f"{avg_fifa:.1f}")
-    else:
-        st.metric("⭐ FIFA Pts Médio", "—")
-
-st.markdown("---")
-
-# ============ FILTROS ============
-col_filter_1, col_filter_2, col_filter_3 = st.columns(3)
+# ============ FILTROS E COLUNAS ============
+col_filter_1, col_filter_2, col_filter_3, col_filter_4 = st.columns([1, 1, 1, 1.8])
 
 with col_filter_1:
     conf_col = next(
@@ -93,6 +64,32 @@ with col_filter_3:
         filtro_cont = st.selectbox("Continente", all_continents, key="dados_filtro_cont")
     else:
         filtro_cont = "Todos"
+
+with col_filter_4:
+    DEFAULT_DISPLAY = [
+        "Seleção",
+        "FIFA_Current_Points",
+        "ELO_Rating",
+        "ELO_Chg_1A",
+        "Valor_Mercado_Milhoes_EUR",
+        "Participações_Copa_Mundo",
+        "Melhor_Resultado_Copa_Mundo",
+    ]
+    DEFAULT_DISPLAY = [c for c in DEFAULT_DISPLAY if c in df_raw.columns]
+    
+    available_cols = df_raw.columns.tolist()
+    skip_cols = ["Link_Bandeira", "FIFA_Flag_URL", "Resumo_Wikipedia"]
+    available_cols = [c for c in available_cols if c not in skip_cols]
+    
+    selected_cols = st.multiselect(
+        "Colunas visíveis",
+        options=available_cols,
+        default=DEFAULT_DISPLAY,
+        key="dados_colunas",
+    )
+
+if not selected_cols:
+    selected_cols = DEFAULT_DISPLAY
 
 # Aplicar filtros
 df = df_raw.copy()
@@ -155,39 +152,8 @@ def build_model_variables(dataframe: pd.DataFrame) -> pd.DataFrame:
 
     return model_df.dropna(axis=1, how="all")
 
-# ============ SELEÇÃO DE COLUNAS ============
-# Organizar colunas em categorias para facilitar a escolha
-COLUMN_GROUPS = {
-    "Identificação": ["Seleção", "NomeIngles", "Grupo", "Confederação", "Confederacao", "Continente_Geo", "Capital", "Regiao"],
-    "FIFA": [c for c in df_raw.columns if c.startswith("FIFA_")],
-    "ELO": [c for c in df_raw.columns if c.startswith("ELO_")],
-    "Mercado & Demo": ["Valor_Mercado_Milhoes_EUR", "Media_Idade", "Tamanho_Elenco", "Populacao", "Area_km2"],
-    "Copa do Mundo": ["Participações_Copa_Mundo", "Melhor_Resultado_Copa_Mundo", "Status_Qualificação", "Status_Qualificacao"],
-}
+# As colunas visíveis já são selecionadas nos widgets de cima.
 
-# Colunas padrão para exibição
-DEFAULT_DISPLAY = [
-    "Seleção", "Grupo", "FIFA_Current_Rank", "FIFA_Current_Points",
-    "ELO_Ranking", "ELO_Rating", "ELO_Chg_1A",
-    "Valor_Mercado_Milhoes_EUR", "Participações_Copa_Mundo", "Melhor_Resultado_Copa_Mundo",
-]
-# Filtrar só as que existem
-DEFAULT_DISPLAY = [c for c in DEFAULT_DISPLAY if c in df.columns]
-
-with st.expander("⚙️ Selecionar colunas visíveis", expanded=False):
-    available_cols = df.columns.tolist()
-    # Remover colunas não úteis para exibição
-    skip_cols = ["Link_Bandeira", "FIFA_Flag_URL", "Resumo_Wikipedia"]
-    available_cols = [c for c in available_cols if c not in skip_cols]
-    selected_cols = st.multiselect(
-        "Colunas",
-        options=available_cols,
-        default=DEFAULT_DISPLAY,
-        key="dados_colunas",
-    )
-
-if not selected_cols:
-    selected_cols = DEFAULT_DISPLAY
 
 # ============ TABELA PRINCIPAL ============
 st.markdown("### 📊 Tabela Completa")
@@ -234,96 +200,128 @@ viz_tab1, viz_tab2, viz_tab3 = st.tabs(
 )
 
 with viz_tab1:
-    col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+    col_v1, col_v2, col_v3 = st.columns(3)
+    grid_style = "rgba(241, 241, 241, 0.05)"
 
     with col_v1:
         if "ELO_Rating" in df.columns and "Seleção" in df.columns:
-            df_elo_sorted = df.nlargest(48, "ELO_Rating")
+            df_elo_sorted = df.nlargest(10, "ELO_Rating")
             fig_elo = px.bar(
                 df_elo_sorted,
                 y="Seleção", x="ELO_Rating",
                 orientation="h",
                 color="ELO_Rating",
-                color_continuous_scale=["#112015", "#209927", "#68E70F"],
-                title="Top 48 — Rating ELO",
+                text="ELO_Rating",
+                color_continuous_scale=["#0D2411", "#1E8224", "#5AE30C"],
+            )
+            fig_elo.update_traces(
+                textposition="inside",
+                texttemplate="<b>%{text:,.0f} pts</b>",
+                insidetextanchor="end",
+                textfont=dict(color="#FFFFFF", size=11),
+                marker_line_width=0,
             )
             fig_elo.update_layout(
+                title=dict(text="<b>Top 10 — Rating ELO</b>", font=dict(color="#68E70F", size=16)),
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                font_color="#C9D1C9", title_font_color="#68E70F",
-
-                yaxis={"categoryorder": "total ascending"},
-                height=1150,
+                font_color="#C9D1C9",
+                coloraxis_showscale=False,
+                margin=dict(l=10, r=10, t=50, b=20),
+                height=450,
+                xaxis=dict(
+                    title="",
+                    showgrid=True,
+                    gridcolor=grid_style,
+                    showticklabels=True,
+                ),
+                yaxis=dict(
+                    title="",
+                    categoryorder="total ascending",
+                    showgrid=False,
+                    tickfont=dict(size=12, weight="bold"),
+                )
             )
             st.plotly_chart(fig_elo, width='stretch')
 
     with col_v2:
         if "FIFA_Current_Points" in df.columns and "Seleção" in df.columns:
-            df_fifa_sorted = df.nlargest(48, "FIFA_Current_Points")
+            df_fifa_sorted = df.nlargest(10, "FIFA_Current_Points")
             fig_fifa = px.bar(
                 df_fifa_sorted,
                 y="Seleção", x="FIFA_Current_Points",
                 orientation="h",
                 color="FIFA_Current_Points",
-                color_continuous_scale=["#112015", "#209927", "#68E70F"],
-                title="Top 48 — FIFA Points",
+                text="FIFA_Current_Points",
+                color_continuous_scale=["#0D2411", "#1E8224", "#5AE30C"],
+            )
+            fig_fifa.update_traces(
+                textposition="inside",
+                texttemplate="<b>%{text:,.1f} pts</b>",
+                insidetextanchor="end",
+                textfont=dict(color="#FFFFFF", size=11),
+                marker_line_width=0,
             )
             fig_fifa.update_layout(
+                title=dict(text="<b>Top 10 — FIFA Points</b>", font=dict(color="#68E70F", size=16)),
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                font_color="#C9D1C9", title_font_color="#68E70F",
-
-                yaxis={"categoryorder": "total ascending"},
-                height=1150,
+                font_color="#C9D1C9",
+                coloraxis_showscale=False,
+                margin=dict(l=10, r=10, t=50, b=20),
+                height=450,
+                xaxis=dict(
+                    title="",
+                    showgrid=True,
+                    gridcolor=grid_style,
+                    showticklabels=True,
+                ),
+                yaxis=dict(
+                    title="",
+                    categoryorder="total ascending",
+                    showgrid=False,
+                    tickfont=dict(size=12, weight="bold"),
+                )
             )
             st.plotly_chart(fig_fifa, width='stretch')
 
     with col_v3:
         if "Valor_Mercado_Milhoes_EUR" in df.columns and "Seleção" in df.columns:
-            df_mkt = df.nlargest(48, "Valor_Mercado_Milhoes_EUR")
+            df_mkt = df.nlargest(10, "Valor_Mercado_Milhoes_EUR")
             fig_mkt = px.bar(
                 df_mkt,
                 y="Seleção", x="Valor_Mercado_Milhoes_EUR",
                 orientation="h",
                 color="Valor_Mercado_Milhoes_EUR",
-                color_continuous_scale=["#1d1b0f", "#7AB802", "#FFCF26"],
-                title="Top 48 — Valor de Mercado (€M)",
+                text="Valor_Mercado_Milhoes_EUR",
+                color_continuous_scale=["#2D2305", "#A68615", "#FFD700"],
+            )
+            fig_mkt.update_traces(
+                textposition="inside",
+                texttemplate="<b>€%{text:,.0f}M</b>",
+                insidetextanchor="end",
+                textfont=dict(color="#FFFFFF", size=11),
+                marker_line_width=0,
             )
             fig_mkt.update_layout(
+                title=dict(text="<b>Top 10 — Valor de Mercado (€M)</b>", font=dict(color="#FFCF26", size=16)),
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                font_color="#C9D1C9", title_font_color="#FFCF26",
-
-                yaxis={"categoryorder": "total ascending"},
-                height=1150,
+                font_color="#C9D1C9",
+                coloraxis_showscale=False,
+                margin=dict(l=10, r=10, t=50, b=20),
+                height=450,
+                xaxis=dict(
+                    title="",
+                    showgrid=True,
+                    gridcolor=grid_style,
+                    showticklabels=True,
+                ),
+                yaxis=dict(
+                    title="",
+                    categoryorder="total ascending",
+                    showgrid=False,
+                    tickfont=dict(size=12, weight="bold"),
+                )
             )
             st.plotly_chart(fig_mkt, width='stretch')
-
-    with col_v4:
-        if "ELO_Chg_1A" in df.columns and "Seleção" in df.columns:
-            df_mom = df.copy()
-            df_mom["ELO_Chg_1A_num"] = pd.to_numeric(df_mom["ELO_Chg_1A"], errors="coerce")
-            df_mom = df_mom.dropna(subset=["ELO_Chg_1A_num"])
-            df_momentum = (
-                df_mom.assign(ELO_Chg_1A_abs=df_mom["ELO_Chg_1A_num"].abs())
-                .nlargest(48, "ELO_Chg_1A_abs")
-                .drop(columns=["ELO_Chg_1A_abs"])
-            )
-            df_momentum = df_momentum.sort_values("ELO_Chg_1A_num")
-
-            colors = ["#BF1A1F" if x < 0 else "#209927" for x in df_momentum["ELO_Chg_1A_num"]]
-            fig_mom = go.Figure(go.Bar(
-                x=df_momentum["ELO_Chg_1A_num"],
-                y=df_momentum["Seleção"],
-                orientation="h",
-                marker_color=colors,
-            ))
-            fig_mom.update_layout(
-                title="Top 48 — Variação ELO (1 Ano)",
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                font_color="#C9D1C9", title_font_color="#68E70F",
-
-                yaxis={"categoryorder": "total ascending"},
-                height=1150,
-            )
-            st.plotly_chart(fig_mom, width='stretch')
 
 with viz_tab2:
     model_variables_df = build_model_variables(df)
@@ -340,7 +338,7 @@ with viz_tab2:
                 fig_small = px.histogram(
                     model_variables_df,
                     x=column,
-                    nbins=12,
+                    nbins=20,
                     color_discrete_sequence=["#209927"],
                     title=column,
                 )
@@ -487,10 +485,23 @@ with viz_tab3:
 
 # ============ DOWNLOAD ============
 st.markdown("---")
-st.download_button(
-    label="⬇️ Baixar dados filtrados (CSV)",
-    data=df[selected_cols].to_csv(index=False).encode("utf-8"),
-    file_name="ELO_FIFA_DadosEnriquecidos.csv",
-    mime="text/csv",
-    key="download_enriched",
-)
+col_dl_1, col_dl_2 = st.columns([1.2, 3], vertical_alignment="center")
+
+with col_dl_1:
+    try:
+        with open(DATA_DIR / dataset_name, "rb") as f:
+            excel_bytes = f.read()
+    except Exception:
+        excel_bytes = b""
+
+    st.download_button(
+        label="⬇️ Baixar arquivo Excel",
+        data=excel_bytes,
+        file_name=dataset_name,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="download_enriched_excel",
+        width="stretch",
+    )
+
+with col_dl_2:
+    st.caption(f"Fonte: `{dataset_name}` · {len(df_raw)} seleções · {len(df_raw.columns)} variáveis")

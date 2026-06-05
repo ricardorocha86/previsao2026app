@@ -4,389 +4,29 @@ import os
 import re
 import sys
 from io import BytesIO
-from pathlib import Path
-
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-import streamlit as st
 import json
 from datetime import datetime as _dt
-from scipy.stats import poisson
+
+import pandas as pd
+import streamlit as st
 from openpyxl.styles import Font, Alignment, PatternFill
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from experimento_calibracao_mercado import ODDS_PATH, canonical_team_key, load_market_target
 from utils.helpers import inject_custom_css
-from utils import config as app_config
-from utils.simulador_oficial import dixon_coles_correction, parse_world_cup_score
 from utils.simulador_oficial import simulate_one_cup_oficial, PoissonMatchSimulator
 from utils.simulador_analitico import run_detailed_simulation
-
-DEFAULT_WEIGHT_FIFA = getattr(app_config, "DEFAULT_WEIGHT_FIFA", 0.05)
-DEFAULT_WEIGHT_MARKET = getattr(app_config, "DEFAULT_WEIGHT_MARKET", 1.00)
-DEFAULT_WEIGHT_ELO = getattr(app_config, "DEFAULT_WEIGHT_ELO", 0.70)
-DEFAULT_WEIGHT_MOMENTUM = getattr(app_config, "DEFAULT_WEIGHT_MOMENTUM", 0.30)
-DEFAULT_WEIGHT_HISTORY = getattr(app_config, "DEFAULT_WEIGHT_HISTORY", 0.90)
-DEFAULT_WEIGHT_HOST = getattr(app_config, "DEFAULT_WEIGHT_HOST", 0.10)
-DEFAULT_MEDIA_GOLS = getattr(app_config, "DEFAULT_MEDIA_GOLS", 3.00)
-DEFAULT_OFFSET = getattr(app_config, "DEFAULT_OFFSET", 0.13)
-DEFAULT_ELASTICIDADE = getattr(app_config, "DEFAULT_ELASTICIDADE", 1.15)
-DEFAULT_USAR_DIXON_COLES = getattr(app_config, "DEFAULT_USAR_DIXON_COLES", True)
-DEFAULT_RHO_DIXON_COLES = getattr(app_config, "DEFAULT_RHO_DIXON_COLES", -0.13)
-
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "dataset"
-
-
-def find_latest_enriched_dataset() -> Path:
-    candidates = sorted(DATA_DIR.glob("FIFA_ELO_DadosSeleções_*.xlsx"))
-    if candidates:
-        return candidates[-1]
-    fallback = DATA_DIR / "FIFA_ELO_DadosSeleções_2026-04-15.xlsx"
-    return fallback
-
-
-def minmax_scale(series: pd.Series) -> pd.Series:
-    numeric = pd.to_numeric(series, errors="coerce")
-    minimum = numeric.min()
-    maximum = numeric.max()
-    if pd.isna(minimum) or pd.isna(maximum) or maximum == minimum:
-        return pd.Series(0.5, index=series.index, dtype=float)
-    return ((numeric - minimum) / (maximum - minimum)).astype(float)
-
-
-# parse_world_cup_history_score removido - agora usa utils.simulador_oficial.parse_world_cup_score
-
-
-@st.cache_data
-def load_force_table(dataset_path: str) -> pd.DataFrame:
-    df = pd.read_excel(dataset_path)
-
-    required_columns = [
-        "Seleção",
-        "Grupo",
-        "Link_Bandeira",
-        "FIFA_Current_Rank",
-        "FIFA_Current_Points",
-        "ELO_Ranking",
-        "ELO_Rating",
-        "ELO_Chg_1A",
-        "Valor_Mercado_Milhoes_EUR",
-        "Participações_Copa_Mundo",
-        "Melhor_Resultado_Copa_Mundo",
-    ]
-    missing = [column for column in required_columns if column not in df.columns]
-    if missing:
-        raise ValueError(f"Colunas ausentes na planilha: {', '.join(missing)}")
-
-    result = df.copy()
-    result["team_key"] = result["NomeIngles"].map(canonical_team_key)
-    
-    hosts = ["Estados Unidos", "México", "Canadá"]
-    result["is_host"] = result["Seleção"].isin(hosts).astype(int)
-    
-    result["fifa_force_01"] = minmax_scale(result["FIFA_Current_Points"])
-    result["elo_force_01"] = minmax_scale(result["ELO_Rating"])
-    result["momentum_force_01"] = minmax_scale(result["ELO_Chg_1A"])
-    result["market_force_01"] = minmax_scale(result["Valor_Mercado_Milhoes_EUR"])
-    result["world_cup_apps_01"] = minmax_scale(result["Participações_Copa_Mundo"])
-    result["world_cup_best_raw"] = result["Melhor_Resultado_Copa_Mundo"].map(parse_world_cup_score)
-    result["world_cup_history_01"] = (
-        0.5 * result["world_cup_apps_01"] + 0.5 * result["world_cup_best_raw"]
-    )
-
-    odds_df = load_market_target(ODDS_PATH)
-    result = result.merge(odds_df[["team_key", "market_prob"]], on="team_key", how="left")
-    return result
-
-
-def build_combined_table(
-    dataframe: pd.DataFrame,
-    weight_fifa: float,
-    weight_elo: float,
-    weight_momentum: float,
-    weight_market: float,
-    weight_history: float,
-    offset: float,
-    elasticidade: float,
-    weight_host: float = 0.0,
-) -> tuple[pd.DataFrame, float]:
-    result = dataframe.copy()
-    weight_sum = weight_fifa + weight_elo + weight_momentum + weight_market + weight_history + weight_host
-
-    if weight_sum > 0:
-        result["forca_resultante_01"] = (
-            weight_fifa * result["fifa_force_01"]
-            + weight_elo * result["elo_force_01"]
-            + weight_momentum * result["momentum_force_01"]
-            + weight_market * result["market_force_01"]
-            + weight_history * result["world_cup_history_01"]
-            + weight_host * result["is_host"]
-        ) / weight_sum
-    else:
-        result["forca_resultante_01"] = 0.0
-
-    max_force = float(result["forca_resultante_01"].max())
-    if max_force > 0:
-        result["forca_resultante_01"] = result["forca_resultante_01"] / max_force
-
-    result["forca_elastica"] = result["forca_resultante_01"] ** elasticidade
-    result["forca_com_offset"] = offset + result["forca_elastica"]
-    
-    result = result.sort_values(
-        by=["forca_resultante_01", "fifa_force_01", "elo_force_01", "market_force_01"],
-        ascending=False,
-    ).reset_index(drop=True)
-    result["ranking_odds"] = (
-        result["market_prob"].rank(method="min", ascending=False).fillna(len(result) + 1).astype(int)
-    )
-    result.index = result.index + 1
-    result.insert(0, "ranking_forca", result.index)
-    return result, weight_sum
-
-
-def poisson_matrix(
-    lambda_a: float,
-    lambda_b: float,
-    max_goals: int = 10,
-    usar_dixon_coles: bool = False,
-    rho_dixon_coles: float = -0.13,
-) -> np.ndarray:
-    goal_range = np.arange(max_goals + 1)
-    probs_a = poisson.pmf(goal_range, lambda_a)
-    probs_b = poisson.pmf(goal_range, lambda_b)
-
-    residual_a = max(0.0, 1.0 - probs_a.sum())
-    residual_b = max(0.0, 1.0 - probs_b.sum())
-    probs_a[-1] += residual_a
-    probs_b[-1] += residual_b
-
-    matrix = np.outer(probs_a, probs_b)
-    if usar_dixon_coles:
-        for goals_a in range(max_goals + 1):
-            for goals_b in range(max_goals + 1):
-                matrix[goals_a, goals_b] *= dixon_coles_correction(
-                    goals_a,
-                    goals_b,
-                    lambda_a,
-                    lambda_b,
-                    rho=rho_dixon_coles,
-                )
-    matrix /= matrix.sum()
-    return matrix
-
-
-def compute_match_probabilities(
-    force_a: float,
-    force_b: float,
-    media_gols: float,
-    max_goals: int = 10,
-    usar_dixon_coles: bool = False,
-    rho_dixon_coles: float = -0.13,
-) -> dict[str, float | np.ndarray]:
-    total_force = force_a + force_b
-    if total_force <= 0:
-        share_a = 0.5
-    else:
-        share_a = force_a / total_force
-    share_b = 1.0 - share_a
-
-    lambda_a = media_gols * share_a
-    lambda_b = media_gols * share_b
-    matrix = poisson_matrix(
-        lambda_a=lambda_a,
-        lambda_b=lambda_b,
-        max_goals=max_goals,
-        usar_dixon_coles=usar_dixon_coles,
-        rho_dixon_coles=rho_dixon_coles,
-    )
-
-    win_a = 0.0
-    draw = 0.0
-    win_b = 0.0
-    scorelines: list[dict[str, float | int | str]] = []
-
-    for goals_a in range(matrix.shape[0]):
-        for goals_b in range(matrix.shape[1]):
-            probability = float(matrix[goals_a, goals_b])
-            scorelines.append(
-                {
-                    "placar": f"{goals_a} x {goals_b}",
-                    "gols_a": goals_a,
-                    "gols_b": goals_b,
-                    "probabilidade": probability,
-                }
-            )
-            if goals_a > goals_b:
-                win_a += probability
-            elif goals_a < goals_b:
-                win_b += probability
-            else:
-                draw += probability
-
-    top_scorelines = (
-        pd.DataFrame(scorelines)
-        .sort_values(by="probabilidade", ascending=False)
-        .head(5)
-        .reset_index(drop=True)
-    )
-
-    return {
-        "share_a": share_a,
-        "share_b": share_b,
-        "lambda_a": lambda_a,
-        "lambda_b": lambda_b,
-        "win_a": win_a,
-        "draw": draw,
-        "win_b": win_b,
-        "matrix": matrix,
-        "top_scorelines": top_scorelines,
-    }
-
-
-def ensure_selected_teams(team_options: list[str]) -> None:
-    """Inicializa os valores padrão no session_state apenas na primeira execução."""
-    if not team_options:
-        return
-
-    default_home = team_options[0]
-    default_away = team_options[1] if len(team_options) > 1 else team_options[0]
-
-    if "explorador_home_team" not in st.session_state or st.session_state["explorador_home_team"] not in team_options:
-        st.session_state["explorador_home_team"] = default_home
-    if "explorador_away_team" not in st.session_state or st.session_state["explorador_away_team"] not in team_options:
-        st.session_state["explorador_away_team"] = default_away
+from utils.forca_core import (
+    BASE_DIR,
+    DATA_DIR,
+    build_combined,
+    compute_match_probabilities,
+    load_force_dataframe,
+    render_param_sidebar,
+)
 
 
 SIM_STAGE_COLUMNS = ["pos_1", "pos_2", "pos_3", "pos_4", "Top32", "Oitavas", "Quartas", "Semifinal", "Final", "Campeao"]
-
-
-def simulate_match_result(
-    rng: np.random.Generator,
-    mata_mata: bool,
-    match_data: dict[str, float | np.ndarray],
-) -> tuple[int, int, int | None]:
-    matrix = match_data["matrix"]
-    flat_index = int(rng.choice(matrix.size, p=matrix.ravel()))
-    goals_a, goals_b = np.unravel_index(flat_index, matrix.shape)
-
-    if goals_a > goals_b:
-        return int(goals_a), int(goals_b), 1
-    if goals_b > goals_a:
-        return int(goals_a), int(goals_b), 2
-    if not mata_mata:
-        return int(goals_a), int(goals_b), None
-
-    share_a = float(match_data["share_a"])
-    winner = 1 if rng.random() < share_a else 2
-    return int(goals_a), int(goals_b), winner
-
-
-def group_sort_key(record: dict) -> tuple[float, ...]:
-    return (
-        record["points"],
-        record["goal_diff"],
-        record["goals_for"],
-        record["force"],
-    )
-
-
-def simulate_one_cup(
-    groups: dict[str, list[str]],
-    strengths: dict[str, float],
-    rng: np.random.Generator,
-    match_cache: dict[tuple[str, str], dict[str, float | np.ndarray]],
-) -> dict[str, dict[str, int]]:
-    history = {
-        team_key: {stage: 0 for stage in SIM_STAGE_COLUMNS}
-        for teams in groups.values()
-        for team_key in teams
-    }
-    campaign_records: list[dict] = []
-
-    for group_name, teams in sorted(groups.items()):
-        table = {
-            team_key: {
-                "team_key": team_key,
-                "group": group_name,
-                "points": 0,
-                "goal_diff": 0,
-                "goals_for": 0,
-                "force": strengths[team_key],
-            }
-            for team_key in teams
-        }
-
-        for i in range(len(teams)):
-            for j in range(i + 1, len(teams)):
-                team_a = teams[i]
-                team_b = teams[j]
-                match_data = match_cache[(team_a, team_b)]
-                goals_a, goals_b, winner = simulate_match_result(
-                    rng=rng,
-                    mata_mata=False,
-                    match_data=match_data,
-                )
-
-                table[team_a]["goal_diff"] += goals_a - goals_b
-                table[team_b]["goal_diff"] += goals_b - goals_a
-                table[team_a]["goals_for"] += goals_a
-                table[team_b]["goals_for"] += goals_b
-
-                if winner == 1:
-                    table[team_a]["points"] += 3
-                elif winner == 2:
-                    table[team_b]["points"] += 3
-                else:
-                    table[team_a]["points"] += 1
-                    table[team_b]["points"] += 1
-
-        ranking = sorted(table.values(), key=group_sort_key, reverse=True)
-        for position, record in enumerate(ranking, start=1):
-            record["group_position"] = position
-            campaign_records.append(record)
-            # Registrar a posição no grupo no histórico
-            history[record["team_key"]][f"pos_{position}"] = 1
-
-    firsts = [row for row in campaign_records if row["group_position"] == 1]
-    seconds = [row for row in campaign_records if row["group_position"] == 2]
-    thirds = [row for row in campaign_records if row["group_position"] == 3]
-    best_thirds = sorted(thirds, key=group_sort_key, reverse=True)[:8]
-    top32 = sorted(firsts + seconds + best_thirds, key=group_sort_key, reverse=True)
-
-    for record in top32:
-        history[record["team_key"]]["Top32"] = 1
-
-    current_round = top32
-    stage_by_round_size = {
-        32: "Oitavas",
-        16: "Quartas",
-        8: "Semifinal",
-        4: "Final",
-        2: "Campeao",
-    }
-
-    while len(current_round) > 1:
-        next_stage = stage_by_round_size[len(current_round)]
-        next_round = []
-        for idx in range(len(current_round) // 2):
-            left = current_round[idx]
-            right = current_round[-1 - idx]
-            match_data = match_cache[(left["team_key"], right["team_key"])]
-            _, _, winner = simulate_match_result(
-                rng=rng,
-                mata_mata=True,
-                match_data=match_data,
-            )
-            winner_record = left if winner == 1 else right
-            history[winner_record["team_key"]][next_stage] = 1
-            next_round.append(winner_record)
-        current_round = next_round
-
-    return history
 
 
 def build_match_cache(
@@ -394,8 +34,8 @@ def build_match_cache(
     media_gols: float,
     usar_dixon_coles: bool,
     rho_dixon_coles: float,
-) -> dict[tuple[str, str], dict[str, float | np.ndarray]]:
-    cache: dict[tuple[str, str], dict[str, float | np.ndarray]] = {}
+) -> dict[tuple[str, str], dict[str, float]]:
+    cache: dict[tuple[str, str], dict[str, float]] = {}
     rows = dataframe.set_index("team_key")[["forca_com_offset"]]
     team_keys = list(rows.index)
     for team_a in team_keys:
@@ -427,7 +67,7 @@ def build_simulation_table(
             "forca_com_offset",
         ]
     ].copy()
-    
+
     for stage in SIM_STAGE_COLUMNS:
         result[f"{stage}_pct"] = result["team_key"].map(lambda key: accumulated[key][stage] / n_sims)
 
@@ -436,13 +76,208 @@ def build_simulation_table(
         by=["Campeao_pct", "Final_pct", "Semifinal_pct", "forca_com_offset"],
         ascending=False,
     ).reset_index(drop=True)
-    
+
     result.index = result.index + 1
     result.insert(0, "Rank Sim", result.index)
-    
-    # Remover colunas internas/auxiliares não solicitadas no export final
-    # Mas manteremos o necessário para o display abaixo
+
     return result
+
+
+# Fases eliminatórias usadas nas tabelas agregadas por categoria e nº de vagas em cada fase.
+# Somando a probabilidade por seleção e dividindo pelas vagas, cada coluna vira uma
+# "participação esperada" da categoria na fase (todas as colunas somam 100% entre categorias).
+CATEGORY_STAGE_SLOTS = {
+    "Top32": 32,
+    "Oitavas": 16,
+    "Quartas": 8,
+    "Semifinal": 4,
+    "Final": 2,
+    "Campeao": 1,
+}
+
+CATEGORY_STAGE_LABELS = {
+    "Top32": "Top 32",
+    "Oitavas": "Oitavas",
+    "Quartas": "Quartas",
+    "Semifinal": "Semi",
+    "Final": "Final",
+    "Campeao": "Campeão",
+}
+
+
+def _aggregate_category(
+    merged: pd.DataFrame,
+    group_col: str,
+    sort_alpha: bool = False,
+    order_key=None,
+) -> pd.DataFrame:
+    """Agrega as probabilidades por fase somando entre as seleções de cada categoria.
+
+    Cada coluna de fase é dividida pelo nº de vagas da fase, virando a fração esperada
+    daquela fase ocupada pela categoria (a coluna ``Campeão`` é literalmente a
+    probabilidade de o campeão sair da categoria).
+    """
+    rows = []
+    for category, sub in merged.groupby(group_col):
+        row = {
+            "Categoria": category,
+            "Nº Seleções": int(len(sub)),
+            "Força Média": float(sub["forca_com_offset"].mean()),
+        }
+        for stage, slots in CATEGORY_STAGE_SLOTS.items():
+            row[CATEGORY_STAGE_LABELS[stage]] = float(sub[f"{stage}_pct"].sum()) / slots
+        rows.append(row)
+
+    result = pd.DataFrame(rows)
+    if order_key is not None:
+        result["_ord"] = result["Categoria"].map(order_key)
+        result = result.sort_values(by="_ord").drop(columns="_ord")
+    elif sort_alpha:
+        result = result.sort_values(by="Categoria")
+    else:
+        result = result.sort_values(by="Campeão", ascending=False)
+    return result.reset_index(drop=True)
+
+
+def _contar_titulos_mundiais(melhor: object) -> int:
+    """Conta quantos títulos mundiais a seleção tem a partir de 'Campeão (anos...)'."""
+    texto = str(melhor or "").strip()
+    if not texto.startswith("Campe"):
+        return 0
+    match = re.search(r"\(([^)]*)\)", texto)
+    if not match:
+        return 1
+    anos = [ano for ano in re.split(r"[,/;]", match.group(1)) if ano.strip()]
+    return len(anos) if anos else 1
+
+
+def _ordem_titulos(categoria: str) -> tuple[int, int]:
+    """Ordem complementar: estreantes, nunca campeãs e depois 1, 2, 3... títulos."""
+    if categoria.startswith("Estre"):
+        return (0, 0)
+    if categoria.startswith("Nunca"):
+        return (1, 0)
+    match = re.match(r"(\d+)", categoria)
+    return (2, int(match.group(1)) if match else 99)
+
+
+# Colunas da distribuição de eliminação, na ordem das fases (somam 100% por seleção).
+ELIMINATION_COLUMNS = [
+    "Fase de Grupos",
+    "16-avos",
+    "Oitavas",
+    "Quartas",
+    "Semifinal",
+    "Vice (Final)",
+    "Campeã",
+]
+
+
+def build_elimination_table(sim_table: pd.DataFrame) -> pd.DataFrame:
+    """Distribuição da fase em que cada seleção é eliminada.
+
+    Derivada das probabilidades acumuladas ("chegou pelo menos à fase X"): a chance de
+    sair exatamente numa fase é a diferença entre chegar nela e chegar na seguinte.
+    Cada linha soma ~100%.
+    """
+    df = sim_table
+    out = pd.DataFrame({"Seleção": df["Seleção"].values})
+    out["Fase de Grupos"] = 1.0 - df["Top32_pct"].values
+    out["16-avos"] = df["Top32_pct"].values - df["Oitavas_pct"].values
+    out["Oitavas"] = df["Oitavas_pct"].values - df["Quartas_pct"].values
+    out["Quartas"] = df["Quartas_pct"].values - df["Semifinal_pct"].values
+    out["Semifinal"] = df["Semifinal_pct"].values - df["Final_pct"].values
+    out["Vice (Final)"] = df["Final_pct"].values - df["Campeao_pct"].values
+    out["Campeã"] = df["Campeao_pct"].values
+
+    # Arredondamentos de ponto flutuante podem gerar diferenças levemente negativas.
+    for col in ELIMINATION_COLUMNS:
+        out[col] = out[col].clip(lower=0.0)
+
+    out = out.sort_values(
+        by=["Campeã", "Vice (Final)", "Semifinal", "Quartas"], ascending=False
+    ).reset_index(drop=True)
+    out.index = out.index + 1
+    out.insert(0, "Rank", out.index)
+    return out
+
+
+GROUP_STAGE_PROB_COLUMNS = [
+    "1º",
+    "2º",
+    "3º",
+    "4º",
+    "Avança como 3º",
+    "Classifica (Top 32)",
+    "Cai na fase de grupos",
+]
+
+
+def build_group_stage_table(
+    sim_table: pd.DataFrame, meta_df: pd.DataFrame
+) -> pd.DataFrame:
+    """Detalhamento da fase de grupos por seleção, organizado por grupo.
+
+    Tudo derivado das probabilidades já acumuladas: ``Avança como 3º`` é a parcela do
+    Top 32 que sobra depois de 1º e 2º (os 8 melhores terceiros), e ``Cai na fase de
+    grupos`` é o complemento do Top 32.
+    """
+    merged = sim_table.merge(meta_df[["team_key", "Grupo"]], on="team_key", how="left")
+
+    out = pd.DataFrame({"Grupo": merged["Grupo"].values, "Seleção": merged["Seleção"].values})
+    out["1º"] = merged["pos_1_pct"].values
+    out["2º"] = merged["pos_2_pct"].values
+    out["3º"] = merged["pos_3_pct"].values
+    out["4º"] = merged["pos_4_pct"].values
+    out["Avança como 3º"] = (
+        merged["Top32_pct"].values - merged["pos_1_pct"].values - merged["pos_2_pct"].values
+    )
+    out["Classifica (Top 32)"] = merged["Top32_pct"].values
+    out["Cai na fase de grupos"] = 1.0 - merged["Top32_pct"].values
+
+    for col in GROUP_STAGE_PROB_COLUMNS:
+        out[col] = out[col].clip(lower=0.0)
+
+    out = out.sort_values(
+        by=["Grupo", "Classifica (Top 32)"], ascending=[True, False]
+    ).reset_index(drop=True)
+    return out
+
+
+def build_category_tables(
+    sim_table: pd.DataFrame, meta_df: pd.DataFrame
+) -> dict[str, pd.DataFrame]:
+    """Constrói as tabelas de probabilidade agregadas por grupo, confederação,
+    estreia em Copas e tradição de título a partir da tabela de simulação."""
+    meta_cols = [
+        "team_key",
+        "Grupo",
+        "Confederação",
+        "Participações_Copa_Mundo",
+        "Melhor_Resultado_Copa_Mundo",
+    ]
+    merged = sim_table.merge(meta_df[meta_cols], on="team_key", how="left")
+
+    merged["cat_grupo"] = "Grupo " + merged["Grupo"].astype(str)
+    merged["cat_confed"] = merged["Confederação"].fillna("Sem confederação")
+
+    apps = pd.to_numeric(merged["Participações_Copa_Mundo"], errors="coerce").fillna(-1)
+    titulos = merged["Melhor_Resultado_Copa_Mundo"].apply(_contar_titulos_mundiais)
+
+    def _cat_titulos(n_apps: float, n_titulos: int) -> str:
+        if n_apps == 0:
+            return "Estreantes (1ª Copa)"
+        if n_titulos == 0:
+            return "Nunca campeãs"
+        return f"{n_titulos} título" + ("s" if n_titulos > 1 else "")
+
+    merged["cat_titulos"] = [_cat_titulos(a, t) for a, t in zip(apps, titulos)]
+
+    return {
+        "Por grupo": _aggregate_category(merged, "cat_grupo", sort_alpha=True),
+        "Por confederação": _aggregate_category(merged, "cat_confed"),
+        "Por títulos em Copas": _aggregate_category(merged, "cat_titulos", order_key=_ordem_titulos),
+    }
 
 
 _MESES_PT = {
@@ -493,31 +328,31 @@ def generate_group_predictions(
             schedule = json.load(f)
     except FileNotFoundError:
         return pd.DataFrame()
-        
+
     name_map = {
         "República da Coreia": "Coreia do Sul",
         "República Democrática do Congo": "RD do Congo",
         "República Tcheca": "Tcheca"
     }
-    
+
     rows = []
     for match in schedule:
         team_a_str = name_map.get(match["team_a"], match["team_a"])
         team_b_str = name_map.get(match["team_b"], match["team_b"])
-        
+
         # Obter forca se times existirem
         if team_a_str in dataframe["Seleção"].values and team_b_str in dataframe["Seleção"].values:
             forca_a = float(dataframe.loc[dataframe["Seleção"] == team_a_str, "forca_com_offset"].iloc[0])
             forca_b = float(dataframe.loc[dataframe["Seleção"] == team_b_str, "forca_com_offset"].iloc[0])
-            
+
             # A função compute_match_probabilities já usa Poisson, média e rho do slider
             probs = compute_match_probabilities(
                 force_a=forca_a, force_b=forca_b, media_gols=media_gols,
                 usar_dixon_coles=usar_dixon_coles, rho_dixon_coles=rho_dixon_coles
             )
-            
+
             wa, d, wb = probs["win_a"], probs["draw"], probs["win_b"]
-                
+
             rows.append({
                 "Grupo": f"Grupo {match['group']}",
                 "Data": _parse_date_pt(match["date"]),
@@ -530,12 +365,13 @@ def generate_group_predictions(
                 "Seleção B": team_b_str,
                 "Força A": forca_a
             })
-            
+
     df_res = pd.DataFrame(rows)
     if not df_res.empty:
         df_res = df_res.sort_values(by=["Grupo", "Força A"], ascending=[True, False]).reset_index(drop=True)
         df_res = df_res.drop(columns=["Força A"])
     return df_res
+
 
 def simulation_excel_bytes(
     simulation_df: pd.DataFrame,
@@ -547,27 +383,27 @@ def simulation_excel_bytes(
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         simulation_df.to_excel(writer, sheet_name="Simulações", index=False)
         info_df.to_excel(writer, sheet_name="Parâmetros", index=False)
-        
+
         if matches_df is not None and not matches_df.empty:
             # Formatar percentuais para exibicao sem converter pra string pra não estragar
             # Mas pandas to_excel precisa ou da string ou que apliquemos style.
             export_matches = matches_df.copy()
             for col in ["Vitória A", "Empate", "Vitória B"]:
                 export_matches[col] = export_matches[col].apply(lambda x: f"{x:.1%}")
-                
+
             export_matches.to_excel(writer, sheet_name="Previsão Jogos", index=False)
             workbook = writer.book
             worksheet = writer.sheets["Previsão Jogos"]
-            
+
             header_fill = PatternFill(start_color="1A1A2E", end_color="1A1A2E", fill_type="solid")
             header_font = Font(color="FFFFFF", bold=True)
             center_align = Alignment(horizontal="center", vertical="center")
-            
+
             # Novo esquema de cores
             base_fill = PatternFill(start_color="EBF4FA", end_color="EBF4FA", fill_type="solid") # Azul bem clarinho para toda a planilha
             win_fill = PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid") # Azul um pouco mais forte para vitórias
             draw_fill = PatternFill(start_color="E8E8E8", end_color="E8E8E8", fill_type="solid") # Cinza claro para empate
-            
+
             for col in range(1, 10):
                 cell = worksheet.cell(row=1, column=col)
                 cell.fill = header_fill
@@ -583,20 +419,20 @@ def simulation_excel_bytes(
             worksheet.column_dimensions['G'].width = 12   # Empate
             worksheet.column_dimensions['H'].width = 12   # Vitória B
             worksheet.column_dimensions['I'].width = 20   # Seleção B
-            
+
             for row in range(2, len(export_matches) + 2):
                 for col in range(1, 10):
                     # Preenchimento base (azul claro)
                     worksheet.cell(row=row, column=col).fill = base_fill
-                    
+
                     if col in [1, 2, 3, 4, 6, 7, 8]:
                         worksheet.cell(row=row, column=col).alignment = center_align
-                
+
                 worksheet.cell(row=row, column=5).alignment = Alignment(horizontal="right", vertical="center")
                 worksheet.cell(row=row, column=5).font = Font(bold=True)
                 worksheet.cell(row=row, column=9).alignment = Alignment(horizontal="left", vertical="center")
                 worksheet.cell(row=row, column=9).font = Font(bold=True)
-                
+
                 worksheet.cell(row=row, column=6).fill = win_fill
                 worksheet.cell(row=row, column=7).fill = draw_fill
                 worksheet.cell(row=row, column=8).fill = win_fill
@@ -608,76 +444,6 @@ def simulation_excel_bytes(
 
     buffer.seek(0)
     return buffer.getvalue()
-
-
-def run_simulation_progressive(
-    dataframe: pd.DataFrame,
-    media_gols: float,
-    n_sims: int,
-    usar_dixon_coles: bool,
-    rho_dixon_coles: float,
-    tipo_chaveamento: str = "Sorteio Oficial",
-    chunk_size: int = 1000,
-) -> pd.DataFrame:
-    groups = dataframe.groupby("Grupo")["team_key"].apply(list).to_dict()
-    strengths = dict(zip(dataframe["team_key"], dataframe["forca_com_offset"]))
-    match_cache = build_match_cache(
-        dataframe=dataframe,
-        media_gols=media_gols,
-        usar_dixon_coles=usar_dixon_coles,
-        rho_dixon_coles=rho_dixon_coles,
-    )
-    rng = np.random.default_rng()
-    match_simulator = PoissonMatchSimulator(match_cache=match_cache, strengths=strengths)
-    
-    # Mapeamento para acelerar a acumulação usando numpy (muito mais rápido que dicts aninhados)
-    team_keys = dataframe["team_key"].tolist()
-    team_idx_map = {key: i for i, key in enumerate(team_keys)}
-    stage_idx_map = {stage: i for i, stage in enumerate(SIM_STAGE_COLUMNS)}
-    # Matriz (Times x Estágios) iniciada com zeros
-    accum_np = np.zeros((len(team_keys), len(SIM_STAGE_COLUMNS)), dtype=np.int32)
-    
-    completed = 0
-    status_placeholder = st.empty()
-    
-    with st.spinner("Processando simulação...", show_time=True):
-        while completed < n_sims:
-            current_chunk = min(chunk_size, n_sims - completed)
-            for _ in range(current_chunk):
-                # Se chaveamento aleatório, sorteia novos grupos a cada simulação
-                if "Aleatório" in tipo_chaveamento:
-                    from utils.simulador_oficial import randomizar_grupos
-                    groups_uso = randomizar_grupos(groups, strengths)
-                else:
-                    groups_uso = groups
-                    
-                history = simulate_one_cup_oficial(
-                    groups=groups_uso,
-                    strengths=strengths,
-                    rng=rng,
-                    match_simulator=match_simulator,
-                )
-                for team_key, stages in history.items():
-                    t_idx = team_idx_map[team_key]
-                    for stage, value in stages.items():
-                        if value:
-                            s_idx = stage_idx_map[stage]
-                            accum_np[t_idx, s_idx] += 1
-
-            completed += current_chunk
-            status_placeholder.markdown(f"**Progresso:** {completed:,} / {n_sims:,} copas")
-
-    # Converter a matriz numpy de volta para o formato de dicionário aninhado que build_simulation_table espera
-    accumulated = {
-        team_key: {
-            stage: int(accum_np[team_idx_map[team_key], stage_idx_map[stage]])
-            for stage in SIM_STAGE_COLUMNS
-        }
-        for team_key in team_keys
-    }
-    
-    status_placeholder.success(f"Simulação concluída: {n_sims:,} copas!")
-    return build_simulation_table(dataframe=dataframe, accumulated=accumulated, n_sims=n_sims)
 
 
 def run_complete_simulation_progressive(
@@ -728,481 +494,41 @@ st.markdown("## Simulação Copa do Mundo 2026")
 st.markdown(
     """
 <p style="font-size: 1rem; margin-bottom: 1.5rem;">
-Combine os índices normalizados de <b>FIFA</b>,
-<b>ELO</b>, o <b>momento recente</b>, <b>valor de mercado</b>,
-o <b>histórico em Copas</b>, ajuste <b>elasticidade</b> e <b>offset</b> e veja como isso altera a probabilidade de um jogo.
+Simulação completa da Copa do Mundo de 2026 a partir do indicador de força e dos
+parâmetros do modelo definidos na barra lateral. Ajuste o número de copas e o tipo
+de chaveamento abaixo e rode a simulação.
 </p>
 """,
     unsafe_allow_html=True,
 )
 
-dataset_path = find_latest_enriched_dataset()
-
-try:
-    base_df = load_force_table(str(dataset_path))
-except Exception as error:
-    st.error(f"Erro ao carregar a base enriquecida: {error}")
-    st.stop()
-
-with st.sidebar:
-    st.markdown("#### Composição do Indicador de Força")
-    col1, col2 = st.columns(2)
-    with col1:
-        weight_fifa = st.slider("FIFA", min_value=0.0, max_value=1.0, value=DEFAULT_WEIGHT_FIFA, step=0.01)
-    with col2:
-        weight_market = st.slider("Mercado", min_value=0.0, max_value=1.0, value=DEFAULT_WEIGHT_MARKET, step=0.01)
-        
-    col3, col4 = st.columns(2)
-    with col3:
-        weight_elo = st.slider("ELO", min_value=0.0, max_value=1.0, value=DEFAULT_WEIGHT_ELO, step=0.01)
-    with col4:
-        weight_momentum = st.slider("Momento", min_value=0.0, max_value=1.0, value=DEFAULT_WEIGHT_MOMENTUM, step=0.01)
-
-    col5, col6 = st.columns(2)
-    with col5:
-        weight_history = st.slider("Histórico Copas", min_value=0.0, max_value=1.0, value=DEFAULT_WEIGHT_HISTORY, step=0.01)
-    with col6:
-        weight_host = st.slider("Anfitrião (Sede)", min_value=0.0, max_value=1.0, value=DEFAULT_WEIGHT_HOST, step=0.01)
-
-    st.markdown("---")
-    st.markdown("#### Parâmetros do Modelo")
-    
-    media_gols = st.slider("Média de gols da partida", min_value=0.5, max_value=5.0, value=DEFAULT_MEDIA_GOLS, step=0.05)
-
-    col7, col8 = st.columns(2)
-    with col7:
-        offset = st.slider("Offset", min_value=0.0, max_value=1.0, value=DEFAULT_OFFSET, step=0.01)
-    with col8:
-        elasticidade = st.slider("Elasticidade", min_value=0.1, max_value=5.0, value=DEFAULT_ELASTICIDADE, step=0.01)
-
-    col9, col10 = st.columns([2, 3])
-    with col9:
-        st.markdown("<div style='margin-top: 2rem;'></div>", unsafe_allow_html=True)
-        usar_dixon_coles = st.toggle("Dixon-Coles", value=DEFAULT_USAR_DIXON_COLES)
-    with col10:
-        rho_dixon_coles = st.slider("Parâmetro rho", min_value=-0.30, max_value=0.00, value=DEFAULT_RHO_DIXON_COLES, step=0.01, disabled=not usar_dixon_coles)
-
-    st.markdown("---")
-    st.markdown("#### Parâmetros da Simulação")
-    n_sims = st.slider("Nº de Copas", min_value=10000, max_value=1000000, value=10000, step=10000)
-    tipo_chaveamento = st.radio("", ["Sorteio Oficial", "Sorteio Aleatório"], horizontal=True)
-    tipo_simulacao = st.radio("Tipo de simulação", ["Básica", "Completa"], horizontal=True)
-    run_simulation = st.button("Rodar simulação", width='stretch')
-    if "explorador_sim_excel_bytes" not in st.session_state:
-        st.session_state["explorador_sim_excel_bytes"] = None
-    st.download_button(
-        label="Baixar Excel",
-        data=st.session_state["explorador_sim_excel_bytes"] if st.session_state["explorador_sim_excel_bytes"] else "",
-        file_name="simulacao_explorador_forca.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        width='stretch',
-        disabled=st.session_state["explorador_sim_excel_bytes"] is None,
-    )
-
-combined_df, weight_sum = build_combined_table(
-    dataframe=base_df,
-    weight_fifa=weight_fifa,
-    weight_elo=weight_elo,
-    weight_momentum=weight_momentum,
-    weight_market=weight_market,
-    weight_history=weight_history,
-    offset=offset,
-    elasticidade=elasticidade,
-    weight_host=weight_host,
-)
+params = render_param_sidebar()
+base_df = load_force_dataframe()
+combined_df, weight_sum = build_combined(base_df, params)
 
 if weight_sum <= 0:
-    st.warning("A soma dos pesos está zerada. Ajuste ao menos um peso para construir a força resultante.")
+    st.warning("A soma dos pesos está zerada. Ajuste ao menos um peso na barra lateral para construir a força resultante.")
 
-effective_fifa = weight_fifa / weight_sum if weight_sum > 0 else 0.0
-effective_elo = weight_elo / weight_sum if weight_sum > 0 else 0.0
-effective_momentum = weight_momentum / weight_sum if weight_sum > 0 else 0.0
-effective_market = weight_market / weight_sum if weight_sum > 0 else 0.0
-effective_history = weight_history / weight_sum if weight_sum > 0 else 0.0
-effective_host = weight_host / weight_sum if weight_sum > 0 else 0.0
+media_gols = params.media_gols
+usar_dixon_coles = params.usar_dixon_coles
+rho_dixon_coles = params.rho_dixon_coles
+tipo_simulacao = "Completa"
 
-col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns(6)
+if "explorador_sim_excel_bytes" not in st.session_state:
+    st.session_state["explorador_sim_excel_bytes"] = None
 
-with col_m1:
-    st.metric("Efetivo FIFA", f"{effective_fifa:.1%}")
-with col_m2:
-    st.metric("Efetivo ELO", f"{effective_elo:.1%}")
-with col_m3:
-    st.metric("Efetivo Momento", f"{effective_momentum:.1%}")
-with col_m4:
-    st.metric("Efetivo Mercado", f"{effective_market:.1%}")
-with col_m5:
-    st.metric("Efetivo História", f"{effective_history:.1%}")
-with col_m6:
-    st.metric("Efetivo Anfitrião", f"{effective_host:.1%}")
-
-st.markdown("### Tabela de Força")
-
-display_table = combined_df[
-    [
-        "Seleção",
-        "fifa_force_01",
-        "elo_force_01",
-        "momentum_force_01",
-        "market_force_01",
-        "world_cup_history_01",
-        "is_host",
-        "forca_resultante_01",
-        "forca_com_offset",
-        "market_prob",
-    ]
-].rename(
-    columns={
-        "Seleção": "Seleção",
-        "fifa_force_01": "Fifa",
-        "elo_force_01": "Elo",
-        "momentum_force_01": "Momento",
-        "market_force_01": "Mercado",
-        "world_cup_history_01": "Historico",
-        "is_host": "Anfitrião",
-        "forca_resultante_01": "Força",
-        "forca_com_offset": "Força Ajustada",
-        "market_prob": "Prob Implicita",
-    }
-)
-
-st.dataframe(
-    display_table,
-    width='stretch',
-    height=520,
-    column_config={
-        "Fifa": st.column_config.NumberColumn(format="%.3f"),
-        "Elo": st.column_config.NumberColumn(format="%.3f"),
-        "Momento": st.column_config.NumberColumn(format="%.3f"),
-        "Mercado": st.column_config.NumberColumn(format="%.3f"),
-        "Historico": st.column_config.NumberColumn(format="%.3f"),
-        "Anfitrião": st.column_config.NumberColumn(format="%.0f"),
-        "Força": st.column_config.NumberColumn(format="%.3f"),
-        "Força Ajustada": st.column_config.NumberColumn(format="%.3f"),
-        "Prob Implicita": st.column_config.NumberColumn(format="%.4f"),
-    },
-)
-
-st.markdown("---")
-st.markdown("### Partida")
-st.markdown(
-    """
-<style>
-    .match-flag-frame {
-        width: 100%;
-        aspect-ratio: 3 / 2;
-        border-radius: 8px;
-        overflow: hidden;
-        background: #0d120d;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .match-flag-frame img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-    }
-
-    .match-stat-card,
-    .match-prob-card {
-        background: #ffffff;
-        text-align: center;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        font-family: 'Exo 2', sans-serif;
-    }
-
-    .match-stat-card {
-        border: 1px solid #e0e0e0;
-        border-radius: 12px;
-        padding: 0.85rem;
-    }
-
-    .match-prob-card {
-        border-radius: 14px;
-        padding: 1.2rem;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.12);
-    }
-
-    .match-prob-card--draw {
-        padding: 1rem 0.8rem;
-    }
-
-    .match-card-label {
-        font-size: 0.95rem;
-        color: #5a5a6a;
-        line-height: 1.25;
-        font-weight: 700;
-    }
-
-    .match-stat-value {
-        font-size: 2.15rem;
-        font-weight: 900;
-        line-height: 1;
-        margin-top: 0.35rem;
-    }
-
-    .match-prob-value {
-        font-size: 3.25rem;
-        font-weight: 900;
-        line-height: 1;
-        margin-top: 0.55rem;
-    }
-
-    .match-prob-value--home {
-        text-align: left;
-    }
-
-    .match-prob-value--away {
-        text-align: right;
-    }
-
-    .match-team-label {
-        font-family: 'Montserrat', 'Exo 2', sans-serif;
-        font-size: 1rem;
-        font-weight: 900;
-        line-height: 1.15;
-        letter-spacing: 0;
-    }
-
-    .match-team-label--home {
-        text-align: left;
-    }
-
-    .match-team-label--away {
-        text-align: right;
-    }
-
-    .match-draw-label {
-        color: #7d7d86;
-        font-size: 0.82rem;
-        font-weight: 600;
-    }
-
-    .match-draw-value {
-        font-size: 2.25rem;
-        text-align: center;
-    }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
-team_options = combined_df["Seleção"].tolist()
-ensure_selected_teams(team_options)
-
-col_left, col_right = st.columns(2)
-
-with col_left:
-    col_home_sel, col_spacer_sel, col_away_sel = st.columns([5, 1, 5])
-    with col_home_sel:
-        home_team = st.selectbox(
-            "Seleção 1",
-            team_options,
-            key="explorador_home_team",
-        )
-    with col_away_sel:
-        away_team = st.selectbox(
-            "Seleção 2",
-            team_options,
-            key="explorador_away_team",
-        )
-
-    home_flag = combined_df.loc[combined_df["Seleção"] == home_team, "Link_Bandeira"].iloc[0]
-    away_flag = combined_df.loc[combined_df["Seleção"] == away_team, "Link_Bandeira"].iloc[0]
-
-    col_home_flag, col_vs_mid, col_away_flag = st.columns([5, 1, 5])
-    with col_home_flag:
-        st.markdown(
-            f"""
-<div style="text-align: center; padding: 0.4rem 0;">
-    <div class="match-flag-frame" style="box-shadow: 0 4px 20px rgba(32,153,39,0.25);">
-        <img src="{home_flag}" alt="Bandeira {home_team}">
-    </div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with col_vs_mid:
-        st.markdown(
-            """
-<div style="text-align: center; padding-top: 2rem;">
-    <span style="font-size: 1.6rem; font-weight: 800; color: #FFCF26;">VS</span>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-    with col_away_flag:
-        st.markdown(
-            f"""
-<div style="text-align: center; padding: 0.4rem 0;">
-    <div class="match-flag-frame" style="box-shadow: 0 4px 20px rgba(3,92,136,0.25);">
-        <img src="{away_flag}" alt="Bandeira {away_team}">
-    </div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-
-if home_team == away_team:
-    with col_left:
-        st.info("Escolha duas seleções diferentes para calcular as probabilidades da partida.")
-else:
-    home_row = combined_df.loc[combined_df["Seleção"] == home_team].iloc[0]
-    away_row = combined_df.loc[combined_df["Seleção"] == away_team].iloc[0]
-
-    match = compute_match_probabilities(
-        force_a=float(home_row["forca_com_offset"]),
-        force_b=float(away_row["forca_com_offset"]),
-        media_gols=media_gols,
-        usar_dixon_coles=usar_dixon_coles,
-        rho_dixon_coles=rho_dixon_coles,
+st.markdown("### Parâmetros da Simulação")
+col_param_1, col_param_2 = st.columns([3, 2])
+with col_param_1:
+    n_sims = st.slider(
+        "Nº de Copas", min_value=10000, max_value=1000000, value=10000, step=10000, key="sim_n_sims"
+    )
+with col_param_2:
+    tipo_chaveamento = st.radio(
+        "Chaveamento", ["Sorteio Oficial", "Sorteio Aleatório"], horizontal=True, key="sim_tipo_chaveamento"
     )
 
-    with col_left:
-        st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
-
-        col_hm1, col_hm2, col_spacer_m, col_am1, col_am2 = st.columns([2.5, 2.5, 0.5, 2.5, 2.5])
-        with col_hm1:
-            st.markdown(
-                f"""
-<div class="match-stat-card" style="border-left: 3px solid #209927;">
-    <div class="match-card-label" style="font-size: 0.82rem; font-weight: 600;">Força</div>
-    <div class="match-stat-value" style="color: #209927;">{float(home_row['forca_com_offset']):.3f}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-        with col_hm2:
-            st.markdown(
-                f"""
-<div class="match-stat-card" style="border-left: 3px solid #209927;">
-    <div class="match-card-label" style="font-size: 0.82rem; font-weight: 600;">Gols esp.</div>
-    <div class="match-stat-value" style="color: #209927;">{float(match['lambda_a']):.2f}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-        with col_am1:
-            st.markdown(
-                f"""
-<div class="match-stat-card" style="border-left: 3px solid #035C88;">
-    <div class="match-card-label" style="font-size: 0.82rem; font-weight: 600;">Força</div>
-    <div class="match-stat-value" style="color: #035C88;">{float(away_row['forca_com_offset']):.3f}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-        with col_am2:
-            st.markdown(
-                f"""
-<div class="match-stat-card" style="border-left: 3px solid #035C88;">
-    <div class="match-card-label" style="font-size: 0.82rem; font-weight: 600;">Gols esp.</div>
-    <div class="match-stat-value" style="color: #035C88;">{float(match['lambda_b']):.2f}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-
-        st.markdown("<div style='height: 1.2rem;'></div>", unsafe_allow_html=True)
-
-        col_prob_1, col_prob_2, col_prob_3 = st.columns([3, 2, 3])
-
-        with col_prob_1:
-            st.markdown(
-                f"""
-<div class="match-prob-card" style="border: 2px solid #209927; box-shadow: 0 2px 12px rgba(32,153,39,0.12);">
-    <div class="match-team-label match-team-label--home" style="color: #209927;">{home_team}</div>
-    <div class="match-prob-value match-prob-value--home" style="color: #209927;">{float(match['win_a']):.1%}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-
-        with col_prob_2:
-            st.markdown(
-                f"""
-<div class="match-prob-card match-prob-card--draw" style="border: 2px solid #9e9e9e; box-shadow: 0 2px 12px rgba(158,158,158,0.12);">
-    <div class="match-card-label match-draw-label">Empate</div>
-    <div class="match-prob-value match-draw-value" style="color: #9e9e9e;">{float(match['draw']):.1%}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-
-        with col_prob_3:
-            st.markdown(
-                f"""
-<div class="match-prob-card" style="border: 2px solid #035C88; box-shadow: 0 2px 12px rgba(3,92,136,0.12);">
-    <div class="match-team-label match-team-label--away" style="color: #035C88;">{away_team}</div>
-    <div class="match-prob-value match-prob-value--away" style="color: #035C88;">{float(match['win_b']):.1%}</div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-
-        st.markdown(
-            f"""
-<div style="background: #e0e0e0; border-radius: 20px; height: 36px; display: flex; overflow: hidden; margin: 1rem 0 1.5rem 0; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);">
-    <div style="width: {float(match['win_a']) * 100:.2f}%; background: #209927;"></div>
-    <div style="width: {float(match['draw']) * 100:.2f}%; background: linear-gradient(90deg, #d8d8d8, #b8b8b8);"></div>
-    <div style="width: {float(match['win_b']) * 100:.2f}%; background: #035C88;"></div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-
-    with col_right:
-        max_gols_display = 6
-        prob_display = match["matrix"][: max_gols_display + 1, : max_gols_display + 1] * 100.0
-        annotations_text = [
-            [f"{prob_display[i, j]:.1f}%" for j in range(max_gols_display + 1)]
-            for i in range(max_gols_display + 1)
-        ]
-
-        fig_heatmap = go.Figure(
-            data=go.Heatmap(
-                z=prob_display,
-                x=[str(i) for i in range(max_gols_display + 1)],
-                y=[str(i) for i in range(max_gols_display + 1)],
-                zmin=0,
-                zmax=float(prob_display.max()),
-                colorscale=[
-                    [0.00, "#010301"],
-                    [1.00, "#55B81E"],
-                ],
-                text=annotations_text,
-                texttemplate="%{text}",
-                textfont={"size": 16, "color": "#F1F1F1"},
-                hovertemplate=(
-                    f"{home_team}: %{{y}} x %{{x}}: {away_team}"
-                    "<br>Probabilidade: %{z:.2f}%<extra></extra>"
-                ),
-                showscale=False,
-            )
-        )
-        fig_heatmap.update_layout(
-            title=dict(text="Probabilidade de Placares", x=0.5, xanchor="center", font=dict(size=20)),
-            xaxis=dict(
-                title=dict(text=away_team, standoff=18, font=dict(size=18)),
-                tickfont=dict(size=13),
-                automargin=True,
-            ),
-            yaxis=dict(
-                title=dict(text=home_team, standoff=18, font=dict(size=18)),
-                tickfont=dict(size=13),
-                automargin=True,
-            ),
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font_color="#C9D1C9",
-    
-            height=598,
-            margin=dict(l=72, r=20, t=60, b=70),
-        )
-        st.plotly_chart(fig_heatmap, width='stretch')
+run_simulation = st.button("Rodar simulação", width='stretch')
 
 st.markdown("---")
 st.markdown("### Simulação")
@@ -1211,29 +537,23 @@ if "explorador_sim_display" not in st.session_state:
     st.session_state["explorador_sim_display"] = None
 if "explorador_detailed_tables" not in st.session_state:
     st.session_state["explorador_detailed_tables"] = None
+if "explorador_category_tables" not in st.session_state:
+    st.session_state["explorador_category_tables"] = None
+if "explorador_elimination_table" not in st.session_state:
+    st.session_state["explorador_elimination_table"] = None
+if "explorador_group_stage_table" not in st.session_state:
+    st.session_state["explorador_group_stage_table"] = None
 
 if run_simulation:
-    detailed_tables = None
-    if tipo_simulacao == "Completa":
-        sim_table, detailed_tables = run_complete_simulation_progressive(
-            dataframe=combined_df,
-            media_gols=media_gols,
-            n_sims=int(n_sims),
-            usar_dixon_coles=usar_dixon_coles,
-            rho_dixon_coles=rho_dixon_coles,
-            tipo_chaveamento=tipo_chaveamento,
-            chunk_size=10000,
-        )
-    else:
-        sim_table = run_simulation_progressive(
-            dataframe=combined_df,
-            media_gols=media_gols,
-            n_sims=int(n_sims),
-            usar_dixon_coles=usar_dixon_coles,
-            rho_dixon_coles=rho_dixon_coles,
-            tipo_chaveamento=tipo_chaveamento,
-            chunk_size=10000,
-        )
+    sim_table, detailed_tables = run_complete_simulation_progressive(
+        dataframe=combined_df,
+        media_gols=media_gols,
+        n_sims=int(n_sims),
+        usar_dixon_coles=usar_dixon_coles,
+        rho_dixon_coles=rho_dixon_coles,
+        tipo_chaveamento=tipo_chaveamento,
+        chunk_size=10000,
+    )
 
     sim_display = sim_table[
         [
@@ -1267,14 +587,14 @@ if run_simulation:
     info_df = pd.DataFrame(
         [
             {"Parametro": "Etapa", "Valor": "Pré-Torneio"},
-            {"Parametro": "Peso FIFA", "Valor": weight_fifa},
-            {"Parametro": "Peso ELO", "Valor": weight_elo},
-            {"Parametro": "Peso Momento", "Valor": weight_momentum},
-            {"Parametro": "Peso Mercado", "Valor": weight_market},
-            {"Parametro": "Peso Histórico Copas", "Valor": weight_history},
-            {"Parametro": "Peso Anfitrião", "Valor": weight_host},
-            {"Parametro": "Offset", "Valor": offset},
-            {"Parametro": "Elasticidade", "Valor": elasticidade},
+            {"Parametro": "Peso FIFA", "Valor": params.weight_fifa},
+            {"Parametro": "Peso ELO", "Valor": params.weight_elo},
+            {"Parametro": "Peso Momento", "Valor": params.weight_momentum},
+            {"Parametro": "Peso Mercado", "Valor": params.weight_market},
+            {"Parametro": "Peso Histórico Copas", "Valor": params.weight_history},
+            {"Parametro": "Peso Anfitrião", "Valor": params.weight_host},
+            {"Parametro": "Offset", "Valor": params.offset},
+            {"Parametro": "Elasticidade", "Valor": params.elasticidade},
             {"Parametro": "Média de gols", "Valor": media_gols},
             {"Parametro": "Usar Dixon-Coles", "Valor": usar_dixon_coles},
             {"Parametro": "Rho Dixon-Coles", "Valor": rho_dixon_coles},
@@ -1288,6 +608,10 @@ if run_simulation:
         usar_dixon_coles=usar_dixon_coles, rho_dixon_coles=rho_dixon_coles
     )
 
+    elimination_table = build_elimination_table(sim_table)
+    group_stage_table = build_group_stage_table(sim_table, combined_df)
+    category_tables = build_category_tables(sim_table, combined_df)
+
     extra_sheets = None
     if detailed_tables:
         extra_sheets = {
@@ -1295,6 +619,11 @@ if run_simulation:
             "Brasil 1o Top32": detailed_tables["brasil_1o_grupo_top32"],
             "Brasil 2o Top32": detailed_tables["brasil_2o_grupo_top32"],
             "Brasil 3o Top32": detailed_tables["brasil_3o_grupo_top32"],
+            "Brasil Adv 16avos": detailed_tables["brasil_adversarios_16avos"],
+            "Brasil Adv Oitavas": detailed_tables["brasil_adversarios_oitavas"],
+            "Brasil Adv Quartas": detailed_tables["brasil_adversarios_quartas"],
+            "Brasil Adv Semi": detailed_tables["brasil_adversarios_semifinal"],
+            "Brasil Adv Final": detailed_tables["brasil_adversarios_final"],
             "Eliminadores Brasil": detailed_tables["eliminadores_brasil"],
             "Carrascos Brasil": detailed_tables["eliminadores_brasil_agrupado"],
             "Titulo Cond Brasil": detailed_tables["titulo_condicional_brasil"],
@@ -1304,13 +633,21 @@ if run_simulation:
             "Semifinais": detailed_tables["semifinais"],
         }
 
+    if extra_sheets is None:
+        extra_sheets = {}
+    extra_sheets["Fase de Grupos Detalhe"] = group_stage_table
+    extra_sheets["Fase de Eliminacao"] = elimination_table
+    extra_sheets["Cat Por Grupo"] = category_tables["Por grupo"]
+    extra_sheets["Cat Por Confederacao"] = category_tables["Por confederação"]
+    extra_sheets["Cat Por Titulos"] = category_tables["Por títulos em Copas"]
+
     st.session_state["explorador_sim_excel_bytes"] = simulation_excel_bytes(
         sim_display,
         info_df,
         matches_df,
         extra_sheets=extra_sheets,
     )
-    
+
     if int(n_sims) >= 100000:
         import datetime
         os.makedirs(BASE_DIR / "resultados", exist_ok=True)
@@ -1318,9 +655,12 @@ if run_simulation:
         filepath = BASE_DIR / "resultados" / f"simulacao_previsao_esportiva_{tipo_simulacao}_Pre-Torneio_{timestamp}.xlsx"
         with open(filepath, "wb") as f:
             f.write(st.session_state["explorador_sim_excel_bytes"])
-            
+
     st.session_state["explorador_sim_display"] = sim_display
     st.session_state["explorador_detailed_tables"] = detailed_tables
+    st.session_state["explorador_category_tables"] = category_tables
+    st.session_state["explorador_elimination_table"] = elimination_table
+    st.session_state["explorador_group_stage_table"] = group_stage_table
     st.rerun()
 
 if st.session_state.get("explorador_sim_display") is not None:
@@ -1339,6 +679,56 @@ if st.session_state.get("explorador_sim_display") is not None:
             "Semi": st.column_config.NumberColumn(format="%.3f"),
             "Final": st.column_config.NumberColumn(format="%.3f"),
             "Campeão": st.column_config.NumberColumn(format="%.3f"),
+        },
+    )
+
+group_stage_table = st.session_state.get("explorador_group_stage_table")
+if group_stage_table is not None:
+    st.markdown("### Fase de grupos detalhada")
+    st.markdown(
+        """
+<p style="font-size: 0.95rem; color: #555; margin-bottom: 1rem;">
+Probabilidade de cada seleção terminar em <b>1º</b>, <b>2º</b>, <b>3º</b> ou <b>4º</b> do
+grupo. <b>Avança como 3º</b> é a chance de se classificar entre os 8 melhores terceiros;
+<b>Classifica (Top 32)</b> é a chance total de ir ao mata-mata; <b>Cai na fase de grupos</b>
+é o complemento.
+</p>
+""",
+        unsafe_allow_html=True,
+    )
+    st.dataframe(
+        group_stage_table,
+        width="stretch",
+        height=560,
+        column_config={
+            col: st.column_config.NumberColumn(format="%.3f")
+            for col in GROUP_STAGE_PROB_COLUMNS
+        },
+    )
+
+elimination_table = st.session_state.get("explorador_elimination_table")
+if elimination_table is not None:
+    st.markdown("### Fase de eliminação por seleção")
+    st.markdown(
+        """
+<p style="font-size: 0.95rem; color: #555; margin-bottom: 1rem;">
+Em qual fase cada seleção é eliminada — da fase de grupos ao título. Cada linha soma
+100%: <b>16-avos</b> = chegou ao mata-mata de 32 e perdeu; <b>Vice</b> = perdeu a final;
+<b>Campeã</b> = venceu o torneio.
+</p>
+""",
+        unsafe_allow_html=True,
+    )
+    st.dataframe(
+        elimination_table,
+        width="stretch",
+        height=520,
+        column_config={
+            "Rank": st.column_config.NumberColumn(format="%d"),
+            **{
+                col: st.column_config.NumberColumn(format="%.3f")
+                for col in ELIMINATION_COLUMNS
+            },
         },
     )
 
@@ -1378,6 +768,24 @@ if detailed_tables:
         st.markdown("###### Brasil 3º do grupo")
         show_table(detailed_tables["brasil_3o_grupo_top32"], height=320)
 
+    st.markdown("##### Adversários mais prováveis do Brasil por fase alcançada")
+    col_adv_1, col_adv_2, col_adv_3, col_adv_4, col_adv_5 = st.columns(5)
+    with col_adv_1:
+        st.markdown("###### Dado que o Brasil avançou para 16 avos")
+        show_table(detailed_tables["brasil_adversarios_16avos"], height=300)
+    with col_adv_2:
+        st.markdown("###### Dado que o Brasil avançou para oitavas")
+        show_table(detailed_tables["brasil_adversarios_oitavas"], height=300)
+    with col_adv_3:
+        st.markdown("###### Dado que o Brasil avançou para quartas")
+        show_table(detailed_tables["brasil_adversarios_quartas"], height=300)
+    with col_adv_4:
+        st.markdown("###### Dado que o Brasil avançou para semi")
+        show_table(detailed_tables["brasil_adversarios_semifinal"], height=300)
+    with col_adv_5:
+        st.markdown("###### Dado que o Brasil avançou para final")
+        show_table(detailed_tables["brasil_adversarios_final"], height=300)
+
     st.markdown("##### Eliminações do Brasil")
     col_elim_1, col_elim_2 = st.columns([1, 2])
     with col_elim_1:
@@ -1393,7 +801,7 @@ if detailed_tables:
         st.markdown("##### Título do Brasil por condição")
         show_table(detailed_tables["titulo_condicional_brasil"], height=360)
     with col_cond_2:
-        st.markdown("##### Impacto da posição no grupo")
+        st.markdown("##### Chance de título pela posição de avanço no grupo")
         show_table(detailed_tables["impacto_posicao_grupo"], height=360)
 
     st.markdown("#### Bottom 16")
@@ -1405,6 +813,56 @@ if detailed_tables:
         st.markdown("##### Lista pelo indicador atual")
         show_table(detailed_tables["bottom16_lista"], height=260)
 
-    st.markdown("#### Semifinais")
-    st.markdown("##### Quartetos de semifinalistas mais prováveis")
-    show_table(detailed_tables["semifinais"], height=520)
+category_tables = st.session_state.get("explorador_category_tables")
+if category_tables:
+    def show_category_table(df: pd.DataFrame, height: int = 320) -> None:
+        prob_cols = ["Força Média"] + list(CATEGORY_STAGE_LABELS.values())
+        st.dataframe(
+            df,
+            width="stretch",
+            height=height,
+            column_config={
+                "Nº Seleções": st.column_config.NumberColumn(format="%d"),
+                **{
+                    col: st.column_config.NumberColumn(format="%.3f")
+                    for col in prob_cols
+                    if col in df.columns
+                },
+            },
+        )
+
+    st.markdown("### Probabilidades agregadas por categoria")
+    st.markdown(
+        """
+<p style="font-size: 0.95rem; color: #555; margin-bottom: 1rem;">
+Cada coluna de fase soma a probabilidade das seleções da categoria e divide pelo nº de
+vagas da fase, virando a <b>participação esperada</b> da categoria naquela fase (todas as
+colunas somam 100% entre as categorias). A coluna <b>Campeão</b> é a probabilidade de o
+campeão sair da categoria.
+</p>
+""",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("#### Por grupo")
+    show_category_table(category_tables["Por grupo"], height=460)
+
+    st.markdown("#### Por confederação")
+    show_category_table(category_tables["Por confederação"], height=280)
+
+    st.markdown("#### Por títulos mundiais")
+    show_category_table(category_tables["Por títulos em Copas"], height=300)
+
+st.markdown("---")
+_sim_bytes = st.session_state["explorador_sim_excel_bytes"]
+_col_dl, _ = st.columns([1, 3])
+with _col_dl:
+    st.download_button(
+        label="Baixar Excel",
+        data=_sim_bytes if _sim_bytes else "",
+        file_name="simulacao_explorador_forca.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width='stretch',
+        disabled=_sim_bytes is None,
+        help="Disponível após rodar uma simulação." if _sim_bytes is None else None,
+    )

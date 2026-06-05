@@ -35,37 +35,63 @@ def elo_to_forca(elo, k_scale=400):
     """Transforma o rating Elo em Força exponencial."""
     return 10 ** (elo / k_scale)
 
+POTE_1_OFICIAL_2026 = (
+    "canada",
+    "mexico",
+    "usa",
+    "spain",
+    "argentina",
+    "france",
+    "england",
+    "brazil",
+    "portugal",
+    "netherlands",
+    "belgium",
+    "germany",
+)
+
+
 def randomizar_grupos(grupos_dict, elo_dict=None):
-    """Randomiza os grupos mantendo os cabeças de chave (Top 12/Hosts)."""
-    CABECAS_2026 = [
-        "Espanha", "Argentina", "França", "Inglaterra", "Brasil", "Portugal", 
-        "Holanda", "Bélgica", "Croácia", "Estados Unidos", "México", "Marrocos"
-    ]
+    """Randomiza apenas os nao cabecas, mantendo o Pote 1 oficial de 2026."""
     todos_times = []
     for teams in grupos_dict.values():
         todos_times.extend(teams)
-    
+
     times_set = set(todos_times)
-    cabecas_base = [t for t in CABECAS_2026 if t in times_set]
-    
-    if len(cabecas_base) < 12 and elo_dict:
-        restantes = [t for t in todos_times if t not in cabecas_base]
-        times_top_elo = sorted(restantes, key=lambda t: elo_dict.get(t, 0), reverse=True)
-        cabecas_base.extend(times_top_elo[:(12 - len(cabecas_base))])
-    
+    cabecas_set = {team for team in POTE_1_OFICIAL_2026 if team in times_set}
     num_grupos = len(grupos_dict)
-    cabecas_final = cabecas_base[:num_grupos]
-    cabecas_set = set(cabecas_final)
+
+    if len(cabecas_set) != num_grupos:
+        faltantes = [team for team in POTE_1_OFICIAL_2026 if team not in times_set]
+        raise ValueError(
+            "Sorteio aleatorio requer exatamente um cabeca oficial por grupo. "
+            f"Cabecas encontrados: {len(cabecas_set)}/{num_grupos}. "
+            f"Faltantes na base: {', '.join(faltantes) if faltantes else 'nenhum'}."
+        )
+
+    cabeca_por_grupo = {}
+    grupos_invalidos = []
+    for grupo, teams in grupos_dict.items():
+        cabecas_do_grupo = [team for team in teams if team in cabecas_set]
+        if len(cabecas_do_grupo) != 1:
+            grupos_invalidos.append(grupo)
+            continue
+        cabeca_por_grupo[grupo] = cabecas_do_grupo[0]
+
+    if grupos_invalidos:
+        raise ValueError(
+            "Sorteio aleatorio requer exatamente um cabeca oficial por grupo. "
+            f"Grupos invalidos: {', '.join(sorted(grupos_invalidos))}."
+        )
+
     outros_times = [t for t in todos_times if t not in cabecas_set]
-    
-    np.random.shuffle(cabecas_final)
     np.random.shuffle(outros_times)
-    
+
     nomes_grupos = sorted(grupos_dict.keys())
     novo_grupos = {}
     idx_outros = 0
-    for i, g in enumerate(nomes_grupos):
-        cabeca = cabecas_final[i]
+    for g in nomes_grupos:
+        cabeca = cabeca_por_grupo[g]
         num_vagas = len(grupos_dict[g]) - 1
         novo_grupos[g] = [cabeca] + outros_times[idx_outros : idx_outros + num_vagas]
         idx_outros += num_vagas

@@ -228,6 +228,7 @@ def simulate_one_cup_analytics(
     semifinalists: tuple[str, ...] = ()
     finalists: tuple[str, str] | None = None
     tracked_eliminator: tuple[str, str] | None = None
+    tracked_opponents_by_stage = {}
 
     while len(current_round) > 1:
         round_size = len(current_round)
@@ -245,9 +246,15 @@ def simulate_one_cup_analytics(
         for idx in range(0, round_size, 2):
             left = current_round[idx]
             right = current_round[idx + 1]
+            left_key = left["team_key"]
+            right_key = right["team_key"]
+            if left_key == tracked_team:
+                tracked_opponents_by_stage[match_stage] = right_key
+            elif right_key == tracked_team:
+                tracked_opponents_by_stage[match_stage] = left_key
             _, _, winner = match_simulator.simulate_match(
-                left["team_key"],
-                right["team_key"],
+                left_key,
+                right_key,
                 rng,
                 True,
             )
@@ -267,6 +274,7 @@ def simulate_one_cup_analytics(
         "group_positions": group_positions,
         "first_knockout_opponent": first_knockout_opponent,
         "tracked_eliminator": tracked_eliminator,
+        "tracked_opponents_by_stage": tracked_opponents_by_stage,
         "semifinalists": semifinalists,
         "finalists": finalists,
         "champion": champion,
@@ -298,6 +306,8 @@ def run_detailed_simulation(
     finals_counter: Counter[tuple[str, str]] = Counter()
     tracked_first_ko_by_group_position = {position: Counter() for position in [1, 2, 3]}
     tracked_first_ko_base_by_group_position = Counter()
+    tracked_opponents_by_stage = defaultdict(Counter)
+    tracked_stage_base = Counter()
     tracked_eliminators: Counter[tuple[str, str]] = Counter()
     tracked_conditions = defaultdict(lambda: {"den": 0, "champ": 0})
     title_by_group_position = defaultdict(lambda: {"den": 0, "champ": 0})
@@ -338,6 +348,10 @@ def run_detailed_simulation(
             if result["semifinalists"]:
                 semifinals_counter[result["semifinalists"]] += 1
 
+            for stage, opponent in result["tracked_opponents_by_stage"].items():
+                tracked_stage_base[stage] += 1
+                tracked_opponents_by_stage[stage][opponent] += 1
+
             tracked_position = result["group_positions"].get(tracked_team)
             if tracked_position is not None:
                 condition_key = f"Brasil pos_{tracked_position} no grupo"
@@ -362,6 +376,10 @@ def run_detailed_simulation(
                 tracked_eliminators[tracked_eliminator] += 1
 
             for team_key, position in result["group_positions"].items():
+                if position == 4:
+                    continue
+                if position == 3 and not history[team_key]["Top32"]:
+                    continue
                 group_key = (team_key, position)
                 title_by_group_position[group_key]["den"] += 1
                 if champion == team_key:
@@ -391,6 +409,8 @@ def run_detailed_simulation(
             finals_counter=finals_counter,
             tracked_first_ko_by_group_position=tracked_first_ko_by_group_position,
             tracked_first_ko_base_by_group_position=tracked_first_ko_base_by_group_position,
+            tracked_opponents_by_stage=tracked_opponents_by_stage,
+            tracked_stage_base=tracked_stage_base,
             tracked_eliminators=tracked_eliminators,
             tracked_conditions=tracked_conditions,
             title_by_group_position=title_by_group_position,
@@ -407,6 +427,8 @@ def build_detailed_tables(
     finals_counter: Counter[tuple[str, str]],
     tracked_first_ko_by_group_position: dict[int, Counter[str]],
     tracked_first_ko_base_by_group_position: Counter,
+    tracked_opponents_by_stage: dict[str, Counter[str]],
+    tracked_stage_base: Counter,
     tracked_eliminators: Counter[tuple[str, str]],
     tracked_conditions: dict,
     title_by_group_position: dict,
@@ -434,6 +456,16 @@ def build_detailed_tables(
                 f"Base Brasil {position}o grupo": base,
             }
             for team, count in tracked_first_ko_by_group_position[position].most_common()
+        ]
+
+    def opponent_rows_for_stage(stage: str) -> list[dict]:
+        base = tracked_stage_base[stage]
+        return [
+            {
+                "Selecao": team_names.get(team, team),
+                "Probabilidade": count / base if base else 0.0,
+            }
+            for team, count in tracked_opponents_by_stage[stage].most_common()
         ]
 
     total_tracked_eliminations = sum(tracked_eliminators.values())
@@ -511,8 +543,7 @@ def build_detailed_tables(
                 "Selecao": row["Selecao"],
                 "Prob titulo se 1o grupo": row.get("Prob titulo se 1o grupo", 0.0),
                 "Prob titulo se 2o grupo": row.get("Prob titulo se 2o grupo", 0.0),
-                "Prob titulo se 3o grupo": row.get("Prob titulo se 3o grupo", 0.0),
-                "Prob titulo se 4o grupo": row.get("Prob titulo se 4o grupo", 0.0),
+                "Prob titulo se avancou em 3o": row.get("Prob titulo se 3o grupo", 0.0),
             }
         )
     position_rows = sorted(
@@ -520,8 +551,7 @@ def build_detailed_tables(
         key=lambda row: (
             row["Prob titulo se 1o grupo"],
             row["Prob titulo se 2o grupo"],
-            row["Prob titulo se 3o grupo"],
-            row["Prob titulo se 4o grupo"],
+            row["Prob titulo se avancou em 3o"],
         ),
         reverse=True,
     )
@@ -552,6 +582,11 @@ def build_detailed_tables(
         "brasil_1o_grupo_top32": pd.DataFrame(first_ko_rows_for_position(1)),
         "brasil_2o_grupo_top32": pd.DataFrame(first_ko_rows_for_position(2)),
         "brasil_3o_grupo_top32": pd.DataFrame(first_ko_rows_for_position(3)),
+        "brasil_adversarios_16avos": pd.DataFrame(opponent_rows_for_stage("Top 32")),
+        "brasil_adversarios_oitavas": pd.DataFrame(opponent_rows_for_stage("Oitavas")),
+        "brasil_adversarios_quartas": pd.DataFrame(opponent_rows_for_stage("Quartas")),
+        "brasil_adversarios_semifinal": pd.DataFrame(opponent_rows_for_stage("Semifinal")),
+        "brasil_adversarios_final": pd.DataFrame(opponent_rows_for_stage("Final")),
         "eliminadores_brasil": pd.DataFrame(eliminator_rows),
         "eliminadores_brasil_agrupado": pd.DataFrame(eliminator_grouped_rows),
         "titulo_condicional_brasil": pd.DataFrame(conditional_rows),

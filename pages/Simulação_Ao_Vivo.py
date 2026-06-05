@@ -8,12 +8,14 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.data_loader import carregar_dados
 from utils.helpers import get_bandeira_url, inject_custom_css
+from utils.forca_core import ModelParams, render_param_sidebar
 from utils.live_model import (
     DefaultModelParams,
     apply_group_result,
@@ -32,6 +34,7 @@ PHASE_LABELS = {
     "round16": "Oitavas",
     "quarters": "Quartas",
     "semis": "Semifinais",
+    "third": "Disputa de 3º lugar",
     "final": "Final",
     "champion": "Campeão",
 }
@@ -40,7 +43,8 @@ NEXT_PHASE = {
     "round32": "round16",
     "round16": "quarters",
     "quarters": "semis",
-    "semis": "final",
+    "semis": "third",
+    "third": "final",
     "final": "champion",
 }
 
@@ -50,6 +54,8 @@ DELAY_BY_SPEED = {
     "Rápido": 0.08,
     "Instantâneo": 0.0,
 }
+
+KNOCKOUT_PHASE_ORDER = ["round32", "round16", "quarters", "semis", "third", "final"]
 
 
 def inject_live_css() -> None:
@@ -204,7 +210,7 @@ def inject_live_css() -> None:
 
     .groups-grid {
         display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 0.55rem;
     }
 
@@ -279,9 +285,23 @@ def inject_live_css() -> None:
 
     .knockout-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 0.55rem;
     }
+
+    .knockout-phase-title {
+        color: #FFCF26;
+        font-family: 'Exo 2', sans-serif;
+        font-size: 1.05rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        margin: 1rem 0 0.5rem;
+        padding-bottom: 0.3rem;
+        border-bottom: 1px solid rgba(255,207,38,0.25);
+    }
+
+    .knockout-phase-title:first-child { margin-top: 0; }
 
     .winner-chip {
         display: inline-flex;
@@ -497,11 +517,24 @@ def render_knockout(matches: list[dict], bandeiras: dict[str, str]) -> None:
     if not matches:
         return
 
-    cards = []
+    grouped: dict[str, list[dict]] = {}
     for match in matches:
-        winner = match.get("winner") or "-"
-        cards.append(
-            f"""
+        grouped.setdefault(match.get("phase"), []).append(match)
+
+    blocks = []
+    # Renderiza da fase mais avançada para a mais antiga, de modo que a chave
+    # vá sendo construída "para cima" (Final no topo, Top 32 embaixo) conforme
+    # a simulação avança.
+    for phase in reversed(KNOCKOUT_PHASE_ORDER):
+        phase_matches = grouped.get(phase)
+        if not phase_matches:
+            continue
+
+        cards = []
+        for match in phase_matches:
+            winner = match.get("winner") or "-"
+            cards.append(
+                f"""
 <div class="group-card">
     <div class="group-title">{esc(PHASE_LABELS.get(match.get('phase'), match.get('phase', '')))} <span>{esc(match.get('slot', ''))}</span></div>
     <div class="compact-match">
@@ -514,8 +547,76 @@ def render_knockout(matches: list[dict], bandeiras: dict[str, str]) -> None:
     </div>
 </div>
 """
+            )
+        blocks.append(
+            f'<div class="knockout-phase-title">{esc(PHASE_LABELS.get(phase, phase))}</div>'
+            f'<div class="knockout-grid">{"".join(cards)}</div>'
         )
-    st.markdown(f'<div class="knockout-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+    st.markdown("".join(blocks), unsafe_allow_html=True)
+
+
+def build_champions_chart(campeoes: dict[str, int], bandeiras: dict[str, str]) -> go.Figure:
+    """Gráfico de barras verticais com os campeões mais frequentes e a bandeira no eixo x."""
+    items = sorted(campeoes.items(), key=lambda kv: (-kv[1], kv[0]))[:12]
+    teams = [team for team, _ in items]
+    counts = [count for _, count in items]
+    indices = list(range(len(teams)))
+
+    fig = go.Figure(
+        go.Bar(
+            x=indices,
+            y=counts,
+            marker_color="#68E70F",
+            marker_line_color="#209927",
+            marker_line_width=1,
+            text=counts,
+            textposition="outside",
+            textfont=dict(color="#F1F1F1", size=13),
+            hovertext=teams,
+            hovertemplate="%{hovertext}: %{y} título(s)<extra></extra>",
+        )
+    )
+
+    # Bandeiras posicionadas logo abaixo de cada barra, no lugar dos rótulos do eixo x.
+    for i, team in enumerate(teams):
+        fig.add_layout_image(
+            dict(
+                source=get_bandeira_url(team, bandeiras),
+                xref="x",
+                yref="paper",
+                x=i,
+                y=-0.04,
+                sizex=0.7,
+                sizey=0.13,
+                xanchor="center",
+                yanchor="top",
+                layer="above",
+            )
+        )
+
+    max_count = max(counts) if counts else 1
+    fig.update_layout(
+        height=440,
+        margin=dict(l=10, r=10, t=30, b=80),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font_color="#C9D1C9",
+        bargap=0.35,
+        xaxis=dict(
+            showticklabels=False,
+            showgrid=False,
+            zeroline=False,
+            range=[-0.6, len(teams) - 0.4] if teams else [-0.6, 0.6],
+        ),
+        yaxis=dict(
+            title="Títulos",
+            gridcolor="rgba(255,255,255,0.08)",
+            dtick=1 if max_count <= 10 else None,
+            rangemode="tozero",
+        ),
+    )
+    return fig
 
 
 def render_history(bandeiras: dict[str, str]) -> None:
@@ -534,19 +635,38 @@ def render_history(bandeiras: dict[str, str]) -> None:
     maior = max(campeoes.items(), key=lambda item: item[1])
     col_c.metric("Maior campeão", f"{maior[0]} ({maior[1]}x)")
 
-    for copa in reversed(historico[-6:]):
-        st.markdown(
-            f"""
-<div class="history-card" style="padding: 0.75rem; margin-bottom: 0.5rem;">
-    <div style="color:#92a092; font-size:0.78rem; font-weight:800;">Copa #{copa['edicao']} · {esc(copa['timestamp'])}</div>
-    <div style="color:#68E70F; font-size:1.05rem; font-weight:900; margin-top:0.2rem;">
-        {flag(copa['campeao'], bandeiras)}{esc(copa['campeao'])}
-    </div>
-    <div style="color:#c9d1c9; font-size:0.82rem;">Vice: {esc(copa['vice'])} · Final: {esc(copa['final_placar'])}</div>
-</div>
-""",
-            unsafe_allow_html=True,
+    col_results, col_chart = st.columns([1, 2])
+
+    with col_results:
+        st.markdown("##### Todos os resultados")
+        df_hist = pd.DataFrame(
+            [
+                {
+                    "#": copa["edicao"],
+                    "Bandeira": get_bandeira_url(copa["campeao"], bandeiras),
+                    "Campeão": copa["campeao"],
+                    "Vice": copa["vice"],
+                    "3º": copa.get("terceiro", "N/A"),
+                    "Final": copa["final_placar"],
+                    "Quando": copa["timestamp"],
+                }
+                for copa in reversed(historico)
+            ]
         )
+        st.dataframe(
+            df_hist,
+            hide_index=True,
+            height=440,
+            width="stretch",
+            column_config={
+                "#": st.column_config.NumberColumn(width="small"),
+                "Bandeira": st.column_config.ImageColumn(""),
+            },
+        )
+
+    with col_chart:
+        st.markdown("##### Top campeões")
+        st.plotly_chart(build_champions_chart(campeoes, bandeiras), width="stretch")
 
 
 def initialize_new_cup(groups: dict[str, list[str]], strengths: dict[str, float]) -> None:
@@ -561,8 +681,11 @@ def initialize_new_cup(groups: dict[str, list[str]], strengths: dict[str, float]
     st.session_state["live_current_round"] = []
     st.session_state["live_campeao"] = None
     st.session_state["live_vice"] = None
+    st.session_state["live_terceiro"] = None
+    st.session_state["live_terceiro_disputa"] = []
     st.session_state["live_semifinalistas"] = []
     st.session_state["live_final_placar"] = None
+    st.session_state["live_champion_popup_done"] = False
     st.session_state["live_seed"] = int(time.time_ns() % 2**32)
 
 
@@ -603,7 +726,7 @@ def render_all(
 
 
 def run_group_stage(
-    params: DefaultModelParams,
+    params: ModelParams,
     strengths: dict[str, float],
     bandeiras: dict[str, str],
     delay: float,
@@ -643,7 +766,7 @@ def run_group_stage(
 
 
 def run_knockout_stage(
-    params: DefaultModelParams,
+    params: ModelParams,
     strengths: dict[str, float],
     bandeiras: dict[str, str],
     delay: float,
@@ -651,9 +774,31 @@ def run_knockout_stage(
     top_team: str,
 ) -> None:
     phase = st.session_state["live_phase"]
-    current_round = st.session_state.get("live_current_round", [])
     rng = np.random.default_rng(st.session_state["live_seed"] + len(st.session_state.get("live_matches", [])) * 97)
+
+    # Disputa de 3º lugar: jogo único entre os dois perdedores das semifinais.
+    if phase == "third":
+        disputa = st.session_state.get("live_terceiro_disputa", [])
+        if len(disputa) >= 2:
+            left, right = disputa[0], disputa[1]
+            match = simulate_match(left["team"], right["team"], strengths, rng, params, knockout=True)
+            winner_record = left if match["winner"] == left["team"] else right
+            match.update({"phase": "third", "slot": "1/1", "winner": winner_record["team"]})
+            st.session_state["live_current_phase_matches"] = [match]
+            st.session_state["live_knockout_matches"].append(match)
+            st.session_state["live_matches"].append(match)
+            st.session_state["live_terceiro"] = winner_record["team"]
+            render_all(*slots, bandeiras, top_team)
+            if delay > 0:
+                time.sleep(delay * 1.7)
+        st.session_state["live_phase"] = NEXT_PHASE["third"]
+        st.session_state["live_current_phase_matches"] = []
+        st.rerun()
+        return
+
+    current_round = st.session_state.get("live_current_round", [])
     winners = []
+    losers = []
     phase_matches = []
 
     if phase == "semis":
@@ -666,6 +811,7 @@ def run_knockout_stage(
         winner_record = left if match["winner"] == left["team"] else right
         loser_record = right if winner_record is left else left
         winners.append(winner_record)
+        losers.append(loser_record)
 
         match.update(
             {
@@ -691,6 +837,9 @@ def run_knockout_stage(
             time.sleep(delay * 1.7)
 
     st.session_state["live_current_round"] = winners
+    # Guarda os perdedores das semifinais para a disputa de 3º lugar.
+    if phase == "semis":
+        st.session_state["live_terceiro_disputa"] = losers
     if phase == "final":
         st.session_state["live_campeao"] = winners[0]["team"]
         st.session_state["live_phase"] = "champion"
@@ -698,6 +847,30 @@ def run_knockout_stage(
         st.session_state["live_phase"] = NEXT_PHASE[phase]
     st.session_state["live_current_phase_matches"] = []
     st.rerun()
+
+
+@st.dialog("Fim da Copa 2026")
+def show_champion_dialog(bandeiras: dict[str, str]) -> None:
+    champion = st.session_state.get("live_campeao", "-")
+    vice = st.session_state.get("live_vice", "-")
+    terceiro = st.session_state.get("live_terceiro", "-")
+    placar = st.session_state.get("live_final_placar", "-")
+    st.markdown(
+        f"""
+<div style="text-align:center;">
+    <div style="color:#FFCF26; font-size:0.85rem; font-weight:900; text-transform:uppercase; letter-spacing:0.04em;">Campeão da Copa 2026</div>
+    <div style="margin:0.7rem 0;">{flag(champion, bandeiras, "current-flag")}</div>
+    <div style="color:#68E70F; font-size:2.1rem; font-weight:900; line-height:1.1;">{esc(champion)}</div>
+    <p style="color:#c9d1c9; font-size:0.95rem; margin-top:0.7rem;">
+        🥈 Vice: <b>{esc(vice)}</b><br>
+        🥉 3º lugar: <b>{esc(terceiro)}</b><br>
+        Final: {esc(placar)}
+    </p>
+    <p style="color:#92a092; font-size:0.8rem; margin-top:0.9rem;">Clique fora desta janela para ver a simulação completa.</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
 
 def finish_cup(bandeiras: dict[str, str]) -> None:
@@ -709,6 +882,7 @@ def finish_cup(bandeiras: dict[str, str]) -> None:
                 "edicao": len(st.session_state.get("historico_copas", [])) + 1,
                 "campeao": champion,
                 "vice": st.session_state.get("live_vice", "N/A"),
+                "terceiro": st.session_state.get("live_terceiro", "N/A"),
                 "semifinalistas": st.session_state.get("live_semifinalistas", []),
                 "final_placar": st.session_state.get("live_final_placar", "N/A"),
                 "timestamp": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
@@ -724,12 +898,15 @@ def finish_cup(bandeiras: dict[str, str]) -> None:
     <div class="live-kicker">Campeão da Copa 2026</div>
     <div style="margin: 0.8rem 0;">{flag(champion, bandeiras, "flag")}</div>
     <div class="live-title">{esc(champion)}</div>
-    <p class="live-subtitle">Vice: {esc(vice)} · Final: {esc(st.session_state.get('live_final_placar', 'N/A'))}</p>
+    <p class="live-subtitle">Vice: {esc(vice)} · 3º lugar: {esc(st.session_state.get('live_terceiro', 'N/A'))} · Final: {esc(st.session_state.get('live_final_placar', 'N/A'))}</p>
 </div>
 """,
             unsafe_allow_html=True,
         )
         st.balloons()
+        if not st.session_state.get("live_champion_popup_done"):
+            st.session_state["live_champion_popup_done"] = True
+            show_champion_dialog(bandeiras)
 
 
 inject_custom_css()
@@ -737,55 +914,22 @@ inject_live_css()
 
 st.markdown("## Simulação Ao Vivo da Copa")
 
-default_params = DefaultModelParams()
-with st.sidebar:
-    st.markdown("### Controles")
-    speed = st.select_slider("Velocidade", options=list(DELAY_BY_SPEED), value="Normal")
-    start_new_cup = st.button("Nova Copa", type="primary", use_container_width=True)
-    clear_history = st.button("Limpar histórico", use_container_width=True)
-
-    st.markdown("---")
-    st.markdown("### Parâmetros do modelo")
-    col_w1, col_w2 = st.columns(2)
-    with col_w1:
-        weight_fifa = st.slider("FIFA", 0.0, 1.0, default_params.weight_fifa, 0.01)
-        weight_elo = st.slider("ELO", 0.0, 1.0, default_params.weight_elo, 0.01)
-        weight_history = st.slider("Histórico", 0.0, 1.0, default_params.weight_history, 0.01)
-    with col_w2:
-        weight_market = st.slider("Mercado", 0.0, 1.0, default_params.weight_market, 0.01)
-        weight_momentum = st.slider("Momento", 0.0, 1.0, default_params.weight_momentum, 0.01)
-        weight_host = st.slider("Sede", 0.0, 1.0, default_params.weight_host, 0.01)
-
-    media_gols = st.slider("Média de gols", 0.5, 5.0, default_params.media_gols, 0.05)
-    col_m1, col_m2 = st.columns(2)
-    with col_m1:
-        offset = st.slider("Offset", 0.0, 1.0, default_params.offset, 0.01)
-    with col_m2:
-        elasticidade = st.slider("Elasticidade", 0.1, 5.0, default_params.elasticidade, 0.01)
-
-    usar_dixon_coles = st.toggle("Dixon-Coles", value=default_params.usar_dixon_coles)
-    rho_dixon_coles = st.slider(
-        "Rho Dixon-Coles",
-        -0.30,
-        0.00,
-        default_params.rho_dixon_coles,
-        0.01,
-        disabled=not usar_dixon_coles,
+col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3, vertical_alignment="bottom")
+with col_ctrl1:
+    speed = st.pills(
+        "Velocidade",
+        options=list(DELAY_BY_SPEED),
+        default="Normal",
+        required=True,
+        key="live_speed",
     )
+with col_ctrl2:
+    start_new_cup = st.button("Nova Copa", type="primary", width='stretch')
+with col_ctrl3:
+    clear_history = st.button("Limpar histórico", width='stretch')
 
-params = DefaultModelParams(
-    weight_fifa=weight_fifa,
-    weight_market=weight_market,
-    weight_elo=weight_elo,
-    weight_momentum=weight_momentum,
-    weight_history=weight_history,
-    weight_host=weight_host,
-    media_gols=media_gols,
-    offset=offset,
-    elasticidade=elasticidade,
-    usar_dixon_coles=usar_dixon_coles,
-    rho_dixon_coles=rho_dixon_coles,
-)
+params = render_param_sidebar()
+
 
 try:
     raw_df = carregar_dados()
@@ -816,10 +960,10 @@ with top_left_col:
 with top_right_col:
     side_slot = st.empty()
 
-st.markdown("### Grupos")
-groups_slot = st.empty()
 st.markdown("### Mata-mata")
 knockout_slot = st.empty()
+st.markdown("### Grupos")
+groups_slot = st.empty()
 
 slots = (overview_slot, current_slot, groups_slot, side_slot, knockout_slot)
 render_all(*slots, bandeiras_dict, top_team)

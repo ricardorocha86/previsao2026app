@@ -1,0 +1,385 @@
+"""Núcleo compartilhado entre as páginas de Indicador de Força, Partida e Simulação.
+
+Reúne a carga da base enriquecida, a construção da tabela de força, o cálculo de
+probabilidades de partida (Poisson + Dixon-Coles) e a renderização dos parâmetros
+do modelo na barra lateral — que ficam compartilhados entre as três páginas.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import streamlit as st
+from scipy.stats import poisson
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from experimento_calibracao_mercado import ODDS_PATH, canonical_team_key, load_market_target
+from utils import config as app_config
+from utils.simulador_oficial import dixon_coles_correction, parse_world_cup_score
+
+
+DEFAULT_WEIGHT_FIFA = getattr(app_config, "DEFAULT_WEIGHT_FIFA", 0.05)
+DEFAULT_WEIGHT_MARKET = getattr(app_config, "DEFAULT_WEIGHT_MARKET", 1.00)
+DEFAULT_WEIGHT_ELO = getattr(app_config, "DEFAULT_WEIGHT_ELO", 0.70)
+DEFAULT_WEIGHT_MOMENTUM = getattr(app_config, "DEFAULT_WEIGHT_MOMENTUM", 0.30)
+DEFAULT_WEIGHT_HISTORY = getattr(app_config, "DEFAULT_WEIGHT_HISTORY", 0.90)
+DEFAULT_WEIGHT_HOST = getattr(app_config, "DEFAULT_WEIGHT_HOST", 0.10)
+DEFAULT_MEDIA_GOLS = getattr(app_config, "DEFAULT_MEDIA_GOLS", 3.00)
+DEFAULT_OFFSET = getattr(app_config, "DEFAULT_OFFSET", 0.13)
+DEFAULT_ELASTICIDADE = getattr(app_config, "DEFAULT_ELASTICIDADE", 1.15)
+DEFAULT_USAR_DIXON_COLES = getattr(app_config, "DEFAULT_USAR_DIXON_COLES", True)
+DEFAULT_RHO_DIXON_COLES = getattr(app_config, "DEFAULT_RHO_DIXON_COLES", -0.13)
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "dataset"
+
+
+@dataclass
+class ModelParams:
+    """Parâmetros de força + modelo compartilhados pela barra lateral."""
+
+    weight_fifa: float
+    weight_elo: float
+    weight_momentum: float
+    weight_market: float
+    weight_history: float
+    weight_host: float
+    media_gols: float
+    offset: float
+    elasticidade: float
+    usar_dixon_coles: bool
+    rho_dixon_coles: float
+
+
+def find_latest_enriched_dataset() -> Path:
+    candidates = sorted(DATA_DIR.glob("FIFA_ELO_DadosSeleções_*.xlsx"))
+    if candidates:
+        return candidates[-1]
+    fallback = DATA_DIR / "FIFA_ELO_DadosSeleções_2026-04-15.xlsx"
+    return fallback
+
+
+def minmax_scale(series: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(series, errors="coerce")
+    minimum = numeric.min()
+    maximum = numeric.max()
+    if pd.isna(minimum) or pd.isna(maximum) or maximum == minimum:
+        return pd.Series(0.5, index=series.index, dtype=float)
+    return ((numeric - minimum) / (maximum - minimum)).astype(float)
+
+
+@st.cache_data
+def load_force_table(dataset_path: str) -> pd.DataFrame:
+    df = pd.read_excel(dataset_path)
+
+    required_columns = [
+        "Seleção",
+        "Grupo",
+        "Link_Bandeira",
+        "FIFA_Current_Rank",
+        "FIFA_Current_Points",
+        "ELO_Ranking",
+        "ELO_Rating",
+        "ELO_Chg_1A",
+        "Valor_Mercado_Milhoes_EUR",
+        "Participações_Copa_Mundo",
+        "Melhor_Resultado_Copa_Mundo",
+    ]
+    missing = [column for column in required_columns if column not in df.columns]
+    if missing:
+        raise ValueError(f"Colunas ausentes na planilha: {', '.join(missing)}")
+
+    result = df.copy()
+    result["team_key"] = result["NomeIngles"].map(canonical_team_key)
+
+    hosts = ["Estados Unidos", "México", "Canadá"]
+    result["is_host"] = result["Seleção"].isin(hosts).astype(int)
+
+    result["fifa_force_01"] = minmax_scale(result["FIFA_Current_Points"])
+    result["elo_force_01"] = minmax_scale(result["ELO_Rating"])
+    result["momentum_force_01"] = minmax_scale(result["ELO_Chg_1A"])
+    result["market_force_01"] = minmax_scale(result["Valor_Mercado_Milhoes_EUR"])
+    result["world_cup_apps_01"] = minmax_scale(result["Participações_Copa_Mundo"])
+    result["world_cup_best_raw"] = result["Melhor_Resultado_Copa_Mundo"].map(parse_world_cup_score)
+    result["world_cup_history_01"] = (
+        0.5 * result["world_cup_apps_01"] + 0.5 * result["world_cup_best_raw"]
+    )
+
+    odds_df = load_market_target(ODDS_PATH)
+    result = result.merge(odds_df[["team_key", "market_prob"]], on="team_key", how="left")
+    return result
+
+
+def build_combined_table(
+    dataframe: pd.DataFrame,
+    weight_fifa: float,
+    weight_elo: float,
+    weight_momentum: float,
+    weight_market: float,
+    weight_history: float,
+    offset: float,
+    elasticidade: float,
+    weight_host: float = 0.0,
+) -> tuple[pd.DataFrame, float]:
+    result = dataframe.copy()
+    weight_sum = weight_fifa + weight_elo + weight_momentum + weight_market + weight_history + weight_host
+
+    if weight_sum > 0:
+        result["forca_resultante_01"] = (
+            weight_fifa * result["fifa_force_01"]
+            + weight_elo * result["elo_force_01"]
+            + weight_momentum * result["momentum_force_01"]
+            + weight_market * result["market_force_01"]
+            + weight_history * result["world_cup_history_01"]
+            + weight_host * result["is_host"]
+        ) / weight_sum
+    else:
+        result["forca_resultante_01"] = 0.0
+
+    max_force = float(result["forca_resultante_01"].max())
+    if max_force > 0:
+        result["forca_resultante_01"] = result["forca_resultante_01"] / max_force
+
+    result["forca_elastica"] = result["forca_resultante_01"] ** elasticidade
+    result["forca_com_offset"] = offset + result["forca_elastica"]
+
+    result = result.sort_values(
+        by=["forca_resultante_01", "fifa_force_01", "elo_force_01", "market_force_01"],
+        ascending=False,
+    ).reset_index(drop=True)
+    result["ranking_odds"] = (
+        result["market_prob"].rank(method="min", ascending=False).fillna(len(result) + 1).astype(int)
+    )
+    result.index = result.index + 1
+    result.insert(0, "ranking_forca", result.index)
+    return result, weight_sum
+
+
+def poisson_matrix(
+    lambda_a: float,
+    lambda_b: float,
+    max_goals: int = 10,
+    usar_dixon_coles: bool = False,
+    rho_dixon_coles: float = -0.13,
+) -> np.ndarray:
+    goal_range = np.arange(max_goals + 1)
+    probs_a = poisson.pmf(goal_range, lambda_a)
+    probs_b = poisson.pmf(goal_range, lambda_b)
+
+    residual_a = max(0.0, 1.0 - probs_a.sum())
+    residual_b = max(0.0, 1.0 - probs_b.sum())
+    probs_a[-1] += residual_a
+    probs_b[-1] += residual_b
+
+    matrix = np.outer(probs_a, probs_b)
+    if usar_dixon_coles:
+        for goals_a in range(max_goals + 1):
+            for goals_b in range(max_goals + 1):
+                matrix[goals_a, goals_b] *= dixon_coles_correction(
+                    goals_a,
+                    goals_b,
+                    lambda_a,
+                    lambda_b,
+                    rho=rho_dixon_coles,
+                )
+    matrix /= matrix.sum()
+    return matrix
+
+
+def compute_match_probabilities(
+    force_a: float,
+    force_b: float,
+    media_gols: float,
+    max_goals: int = 10,
+    usar_dixon_coles: bool = False,
+    rho_dixon_coles: float = -0.13,
+) -> dict[str, float | np.ndarray]:
+    total_force = force_a + force_b
+    if total_force <= 0:
+        share_a = 0.5
+    else:
+        share_a = force_a / total_force
+    share_b = 1.0 - share_a
+
+    lambda_a = media_gols * share_a
+    lambda_b = media_gols * share_b
+    matrix = poisson_matrix(
+        lambda_a=lambda_a,
+        lambda_b=lambda_b,
+        max_goals=max_goals,
+        usar_dixon_coles=usar_dixon_coles,
+        rho_dixon_coles=rho_dixon_coles,
+    )
+
+    win_a = 0.0
+    draw = 0.0
+    win_b = 0.0
+    scorelines: list[dict[str, float | int | str]] = []
+
+    for goals_a in range(matrix.shape[0]):
+        for goals_b in range(matrix.shape[1]):
+            probability = float(matrix[goals_a, goals_b])
+            scorelines.append(
+                {
+                    "placar": f"{goals_a} x {goals_b}",
+                    "gols_a": goals_a,
+                    "gols_b": goals_b,
+                    "probabilidade": probability,
+                }
+            )
+            if goals_a > goals_b:
+                win_a += probability
+            elif goals_a < goals_b:
+                win_b += probability
+            else:
+                draw += probability
+
+    top_scorelines = (
+        pd.DataFrame(scorelines)
+        .sort_values(by="probabilidade", ascending=False)
+        .head(5)
+        .reset_index(drop=True)
+    )
+
+    return {
+        "share_a": share_a,
+        "share_b": share_b,
+        "lambda_a": lambda_a,
+        "lambda_b": lambda_b,
+        "win_a": win_a,
+        "draw": draw,
+        "win_b": win_b,
+        "matrix": matrix,
+        "top_scorelines": top_scorelines,
+    }
+
+
+def ensure_selected_teams(team_options: list[str]) -> None:
+    """Inicializa os valores padrão no session_state apenas na primeira execução."""
+    if not team_options:
+        return
+
+    default_home = team_options[0]
+    default_away = team_options[1] if len(team_options) > 1 else team_options[0]
+
+    if "explorador_home_team" not in st.session_state or st.session_state["explorador_home_team"] not in team_options:
+        st.session_state["explorador_home_team"] = default_home
+    if "explorador_away_team" not in st.session_state or st.session_state["explorador_away_team"] not in team_options:
+        st.session_state["explorador_away_team"] = default_away
+
+
+def render_param_sidebar() -> ModelParams:
+    """Renderiza os pesos do indicador e os parâmetros do modelo na barra lateral.
+
+    As chaves (``key=``) garantem que os valores fiquem sincronizados ao navegar
+    entre as páginas de Indicador de Força, Partida e Simulação.
+    """
+    # Inicializa o dicionário de persistência no session_state caso não exista
+    if "model_sidebar_params" not in st.session_state:
+        st.session_state["model_sidebar_params"] = {
+            "param_weight_fifa": DEFAULT_WEIGHT_FIFA,
+            "param_weight_market": DEFAULT_WEIGHT_MARKET,
+            "param_weight_elo": DEFAULT_WEIGHT_ELO,
+            "param_weight_momentum": DEFAULT_WEIGHT_MOMENTUM,
+            "param_weight_history": DEFAULT_WEIGHT_HISTORY,
+            "param_weight_host": DEFAULT_WEIGHT_HOST,
+            "param_media_gols": DEFAULT_MEDIA_GOLS,
+            "param_offset": DEFAULT_OFFSET,
+            "param_elasticidade": DEFAULT_ELASTICIDADE,
+            "param_usar_dixon_coles": DEFAULT_USAR_DIXON_COLES,
+            "param_rho_dixon_coles": DEFAULT_RHO_DIXON_COLES,
+        }
+
+    # Sincroniza do dicionário persistente para as chaves atuais do session_state
+    for key, val in st.session_state["model_sidebar_params"].items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+    with st.sidebar:
+        st.markdown("#### Composição do Indicador de Força")
+        col1, col2 = st.columns(2)
+        with col1:
+            weight_fifa = st.slider("FIFA", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_fifa"]), step=0.01, key="param_weight_fifa")
+        with col2:
+            weight_market = st.slider("Mercado", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_market"]), step=0.01, key="param_weight_market")
+
+        col3, col4 = st.columns(2)
+        with col3:
+            weight_elo = st.slider("ELO", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_elo"]), step=0.01, key="param_weight_elo")
+        with col4:
+            weight_momentum = st.slider("Momento", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_momentum"]), step=0.01, key="param_weight_momentum")
+
+        col5, col6 = st.columns(2)
+        with col5:
+            weight_history = st.slider("Histórico Copas", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_history"]), step=0.01, key="param_weight_history")
+        with col6:
+            weight_host = st.slider("Anfitrião (Sede)", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_host"]), step=0.01, key="param_weight_host")
+
+        st.markdown("---")
+        st.markdown("#### Parâmetros do Modelo")
+
+        media_gols = st.slider("Média de gols da partida", min_value=0.5, max_value=5.0, value=float(st.session_state["model_sidebar_params"]["param_media_gols"]), step=0.05, key="param_media_gols")
+
+        col7, col8 = st.columns(2)
+        with col7:
+            offset = st.slider("Offset", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_offset"]), step=0.01, key="param_offset")
+        with col8:
+            elasticidade = st.slider("Elasticidade", min_value=0.1, max_value=5.0, value=float(st.session_state["model_sidebar_params"]["param_elasticidade"]), step=0.01, key="param_elasticidade")
+
+        col9, col10 = st.columns([2, 3])
+        with col9:
+            st.markdown("<div style='margin-top: 2rem;'></div>", unsafe_allow_html=True)
+            usar_dixon_coles = st.toggle("Dixon-Coles", value=bool(st.session_state["model_sidebar_params"]["param_usar_dixon_coles"]), key="param_usar_dixon_coles")
+        with col10:
+            rho_dixon_coles = st.slider("Parâmetro rho", min_value=-0.30, max_value=0.00, value=float(st.session_state["model_sidebar_params"]["param_rho_dixon_coles"]), step=0.01, disabled=not usar_dixon_coles, key="param_rho_dixon_coles")
+
+    # Sincroniza de volta das chaves atuais do session_state para o dicionário persistente
+    for key in st.session_state["model_sidebar_params"].keys():
+        if key in st.session_state:
+            st.session_state["model_sidebar_params"][key] = st.session_state[key]
+
+    return ModelParams(
+        weight_fifa=weight_fifa,
+        weight_elo=weight_elo,
+        weight_momentum=weight_momentum,
+        weight_market=weight_market,
+        weight_history=weight_history,
+        weight_host=weight_host,
+        media_gols=media_gols,
+        offset=offset,
+        elasticidade=elasticidade,
+        usar_dixon_coles=usar_dixon_coles,
+        rho_dixon_coles=rho_dixon_coles,
+    )
+
+
+def load_force_dataframe() -> pd.DataFrame:
+    """Carrega a base enriquecida mais recente, interrompendo a página em caso de erro."""
+    dataset_path = find_latest_enriched_dataset()
+    try:
+        return load_force_table(str(dataset_path))
+    except Exception as error:  # noqa: BLE001
+        st.error(f"Erro ao carregar a base enriquecida: {error}")
+        st.stop()
+
+
+def build_combined(base_df: pd.DataFrame, params: ModelParams) -> tuple[pd.DataFrame, float]:
+    """Aplica os pesos/offset/elasticidade dos parâmetros e devolve (tabela, soma_pesos)."""
+    return build_combined_table(
+        dataframe=base_df,
+        weight_fifa=params.weight_fifa,
+        weight_elo=params.weight_elo,
+        weight_momentum=params.weight_momentum,
+        weight_market=params.weight_market,
+        weight_history=params.weight_history,
+        offset=params.offset,
+        elasticidade=params.elasticidade,
+        weight_host=params.weight_host,
+    )

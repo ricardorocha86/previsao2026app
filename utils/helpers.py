@@ -94,7 +94,7 @@ def inject_custom_css():
 
         /* Customização dos Subheaders da Sidebar */
         section[data-testid="stSidebar"] h4 {
-            color: var(--verde-claro) !important;
+            color: var(--text-primary) !important;
             font-family: 'Exo 2', sans-serif !important;
             font-weight: 700 !important;
             font-size: 0.9rem !important;
@@ -130,10 +130,6 @@ def inject_custom_css():
             box-shadow: 0 0 6px rgba(104, 231, 15, 0.4) !important;
             width: 12px !important;
             height: 12px !important;
-            transition: transform 0.1s ease !important;
-        }
-        section[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] [role="slider"]:hover {
-            transform: scale(1.2) !important;
         }
         
         /* Marcas numéricas do Slider */

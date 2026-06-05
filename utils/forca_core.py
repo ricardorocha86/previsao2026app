@@ -303,7 +303,7 @@ def render_param_sidebar() -> ModelParams:
             st.session_state[key] = val
 
     with st.sidebar:
-        st.markdown("#### Composição do Indicador de Força")
+        st.markdown("#### Indicador de Força")
         
         # Primeira linha (3 colunas): Ranking ELO, Ranking FIFA, Mercado
         col_w1, col_w2, col_w3 = st.columns(3)

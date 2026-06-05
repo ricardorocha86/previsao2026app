@@ -327,31 +327,79 @@ with viz_tab2:
         st.info("Nenhuma das variáveis do modelo foi encontrada no dataset filtrado.")
     else:
         overview_cols = st.columns(min(3, len(model_variables_df.columns)))
+        brasil_df = df[df["Seleção"] == "Brasil"]
+
         for index, column in enumerate(model_variables_df.columns):
             with overview_cols[index % len(overview_cols)]:
                 valid_series = model_variables_df[column].dropna()
                 if valid_series.empty:
                     continue
-                fig_small = px.histogram(
-                    model_variables_df,
-                    x=column,
-                    nbins=20,
-                    color_discrete_sequence=["#209927"],
-                    title=column,
-                )
+
+                # Calcular histograma manualmente com numpy para poder colorir a barra do Brasil
+                counts, bins = np.histogram(valid_series, bins=20)
+                bin_centers = 0.5 * (bins[:-1] + bins[1:])
+                bin_width = bins[1] - bins[0]
+
+                colors = ["#209927"] * len(counts)
+                line_colors = ["rgba(241,241,241,0.55)"] * len(counts)
+                line_widths = [1.1] * len(counts)
+                brasil_val = None
+
+                if not brasil_df.empty:
+                    brasil_val = float(model_variables_df.loc[brasil_df.index[0], column])
+                    if not pd.isna(brasil_val):
+                        bin_idx = np.digitize(brasil_val, bins) - 1
+                        if bin_idx == len(counts):
+                            bin_idx = len(counts) - 1
+                        if 0 <= bin_idx < len(counts):
+                            colors[bin_idx] = "#FFCF26" # Destaque em amarelo para o Brasil
+                            line_colors[bin_idx] = "#F1F1F1"
+                            line_widths[bin_idx] = 1.5
+
+                hover_texts = [f"Intervalo: {bins[i]:.2f} - {bins[i+1]:.2f}<br>Frequência: {counts[i]}" for i in range(len(counts))]
+
+                fig_small = go.Figure(go.Bar(
+                    x=bin_centers,
+                    y=counts,
+                    width=bin_width * 0.9,
+                    marker=dict(
+                        color=colors,
+                        line=dict(color=line_colors, width=line_widths)
+                    ),
+                    text=hover_texts,
+                    hovertemplate="%{text}<extra></extra>"
+                ))
+
+                if brasil_val is not None:
+                    fig_small.add_vline(
+                        x=brasil_val,
+                        line_dash="dash",
+                        line_color="#FFCF26",
+                        line_width=1.5,
+                    )
+                    fig_small.add_annotation(
+                        x=brasil_val,
+                        y=0.95,
+                        yref="paper",
+                        text="🇧🇷 Brasil",
+                        showarrow=False,
+                        font=dict(color="#FFCF26", size=10, family="sans-serif"),
+                        bgcolor="rgba(17,22,17,0.9)",
+                        bordercolor="#FFCF26",
+                        borderwidth=1,
+                        yshift=5,
+                    )
+
                 fig_small.update_layout(
+                    title=dict(text=f"<b>{column}</b>", font=dict(color="#68E70F", size=14)),
                     plot_bgcolor="rgba(0,0,0,0)",
                     paper_bgcolor="rgba(0,0,0,0)",
                     font_color="#C9D1C9",
-                    title_font_color="#68E70F",
-
                     height=260,
                     margin=dict(l=20, r=20, t=45, b=35),
                     showlegend=False,
-                )
-                fig_small.update_traces(
-                    marker_line_color="rgba(241,241,241,0.55)",
-                    marker_line_width=1.1,
+                    xaxis=dict(showgrid=False),
+                    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"),
                 )
                 st.plotly_chart(fig_small, width='stretch')
 

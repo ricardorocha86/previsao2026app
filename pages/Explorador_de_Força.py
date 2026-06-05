@@ -815,7 +815,7 @@ SIM_COPAS_OPCOES = (
     + list(range(2000000, 10000001, 1000000))  # 2 mi → 10 mi (de 1 mi em 1 mi)
 )
 
-tab_rodar, tab_carregar = st.tabs(["⚙️ Ajustar e Rodar Nova Simulação", "📂 Carregar Simulação Oficial ou Salva"])
+tab_rodar, tab_carregar = st.tabs(["⚙️ Ajustar e Rodar Nova Simulação", "📂 Carregar Simulação Oficial"])
 
 with tab_rodar:
     col_params, _ = st.columns([2, 3])

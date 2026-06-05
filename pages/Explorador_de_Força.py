@@ -818,8 +818,8 @@ SIM_COPAS_OPCOES = (
 tab_rodar, tab_carregar = st.tabs(["⚙️ Ajustar e Rodar Nova Simulação", "📂 Carregar Simulação Oficial ou Salva"])
 
 with tab_rodar:
-    col_a, col_b = st.columns([1, 1])
-    with col_a:
+    col_params, _ = st.columns([2, 3])
+    with col_params:
         n_sims = st.select_slider(
             "Nº de Copas",
             options=SIM_COPAS_OPCOES,
@@ -827,19 +827,17 @@ with tab_rodar:
             format_func=_fmt_copas,
             key="sim_n_sims_preset",
         )
-    with col_b:
         tipo_chaveamento = st.pills(
             "Chaveamento", ["Sorteio Oficial", "Sorteio Aleatório"], selection_mode="single", default="Sorteio Oficial", key="sim_tipo_chaveamento"
         )
         if tipo_chaveamento is None:
             tipo_chaveamento = "Sorteio Oficial"
-
-    # ETA estimado considerando ~1000 simulações por segundo
-    eta_min = int(n_sims) / 1000 / 60
-    eta_label = f"{eta_min:.1f}".replace(".", ",")
-    run_simulation = st.button(
-        f"🚀 Rodar simulação (ETA: {eta_label}min)", type="primary", use_container_width=True
-    )
+        # ETA estimado considerando ~1000 simulações por segundo
+        eta_min = int(n_sims) / 1000 / 60
+        eta_label = f"{eta_min:.1f}".replace(".", ",")
+        run_simulation = st.button(
+            f"🚀 Rodar simulação (ETA: {eta_label}min)", type="primary", use_container_width=True
+        )
 
 with tab_carregar:
     resultados_dir = BASE_DIR / "resultados"
@@ -856,19 +854,16 @@ with tab_carregar:
             key=lambda x: ("pre-torneio" in x.lower() or "oficial" in x.lower(), x),
             reverse=True
         )
-        col_sel, col_btn = st.columns([3, 1])
-        with col_sel:
+        col_load, _ = st.columns([2, 3])
+        with col_load:
             selected_file = st.selectbox(
                 "Selecione uma simulação salva:",
                 options=saved_files_sorted,
                 help="Carregue uma simulação completa previamente executada para visualizar as abas imediatamente.",
                 key="sim_selected_file_to_load"
             )
-        with col_btn:
-            # Spacer to vertically align button with selectbox input
-            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             load_simulation = st.button(
-                "📥 Carregar",
+                "📥 Carregar Simulação Selecionada",
                 type="primary",
                 use_container_width=True
             )

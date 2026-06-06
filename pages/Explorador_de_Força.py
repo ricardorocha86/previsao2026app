@@ -179,6 +179,10 @@ def build_match_cache(
     return cache
 
 
+def _format_count(value: int) -> str:
+    return f"{value:,}".replace(",", ".")
+
+
 def build_simulation_table(
     dataframe: pd.DataFrame,
     accumulated: dict[str, dict[str, int]],
@@ -577,6 +581,7 @@ def simulation_excel_bytes(
     return buffer.getvalue()
 
 
+@st.dialog("Simulação da Copa 2026", width="small")
 def run_complete_simulation_progressive(
     dataframe: pd.DataFrame,
     media_gols: float,
@@ -584,8 +589,77 @@ def run_complete_simulation_progressive(
     usar_dixon_coles: bool,
     rho_dixon_coles: float,
     tipo_chaveamento: str = "Sorteio Oficial",
-    chunk_size: int = 10000,
+    chunk_size: int = 1000,
 ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
+    st.markdown(
+        """
+<style>
+div[data-testid="stDialog"] div[role="dialog"] {
+    background: #f8fafc !important;
+    color: #111827 !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 14px !important;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22) !important;
+}
+div[data-testid="stDialog"] h2,
+div[data-testid="stDialog"] p,
+div[data-testid="stDialog"] span,
+div[data-testid="stDialog"] label,
+div[data-testid="stDialog"] div {
+    color: #111827;
+}
+div[data-testid="stDialog"] div[data-testid="stAlert"] {
+    background: #eef6ff;
+    border: 1px solid #bfdbfe;
+    color: #1f2937;
+}
+div[data-testid="stDialog"] div[data-testid="stAlert"] p {
+    color: #1f2937;
+}
+.simulation-dialog-summary {
+    color: #475569;
+    font-size: 0.95rem;
+    margin: 0 0 0.8rem;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"""
+<div class="simulation-dialog-summary">
+    Rodando <b>{_format_count(n_sims)}</b> copas com chaveamento <b>{tipo_chaveamento}</b>.
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    progress_bar = st.progress(0, text="Preparando simulacao...")
+    status_slot = st.empty()
+
+    def render_dialog_status(
+        completed: int,
+        total: int,
+        stage: str,
+        done: bool = False,
+    ) -> None:
+        pct = completed / total if total else 0
+
+        progress_bar.progress(
+            min(1.0, pct),
+            text=f"{_format_count(completed)} de {_format_count(total)} copas - {pct * 100:5.1f}%",
+        )
+
+        if done:
+            status_slot.success(stage)
+        else:
+            status_slot.info(stage)
+
+    render_dialog_status(
+        completed=0,
+        total=n_sims,
+        stage="Preparando os confrontos.",
+    )
+
     strengths = dict(zip(dataframe["team_key"], dataframe["forca_com_offset"]))
     match_cache = build_match_cache(
         dataframe=dataframe,
@@ -594,10 +668,18 @@ def run_complete_simulation_progressive(
         rho_dixon_coles=rho_dixon_coles,
     )
     match_simulator = PoissonMatchSimulator(match_cache=match_cache, strengths=strengths)
-    status_placeholder = st.empty()
+    render_dialog_status(
+        completed=0,
+        total=n_sims,
+        stage="Simulação iniciada.",
+    )
 
     def update_progress(completed: int, total: int) -> None:
-        status_placeholder.markdown(f"**Progresso detalhado:** {completed:,} / {total:,} copas")
+        render_dialog_status(
+            completed=completed,
+            total=total,
+            stage="Simulando e consolidando resultados.",
+        )
 
     with st.spinner("Processando simulação completa...", show_time=True):
         detailed_result = run_detailed_simulation(
@@ -610,12 +692,18 @@ def run_complete_simulation_progressive(
             progress_callback=update_progress,
         )
 
-    status_placeholder.success(f"Simulação completa concluída: {n_sims:,} copas!")
+    render_dialog_status(
+        completed=n_sims,
+        total=n_sims,
+        stage="Simulação concluída.",
+        done=True,
+    )
     sim_table = build_simulation_table(
         dataframe=dataframe,
         accumulated=detailed_result["accumulated"],
         n_sims=n_sims,
     )
+    st.session_state["_explorador_latest_sim_result"] = (sim_table, detailed_result["tables"])
     return sim_table, detailed_result["tables"]
 
 
@@ -901,15 +989,21 @@ else:
 st.markdown("### Resultados da Simulação")
 
 if run_simulation:
-    sim_table, detailed_tables = run_complete_simulation_progressive(
+    st.session_state.pop("_explorador_latest_sim_result", None)
+    run_complete_simulation_progressive(
         dataframe=combined_df,
         media_gols=media_gols,
         n_sims=int(n_sims),
         usar_dixon_coles=usar_dixon_coles,
         rho_dixon_coles=rho_dixon_coles,
         tipo_chaveamento=tipo_chaveamento,
-        chunk_size=10000,
+        chunk_size=1000,
     )
+    sim_result = st.session_state.pop("_explorador_latest_sim_result", None)
+    if sim_result is None:
+        st.error("A simulacao terminou sem devolver resultados.")
+        st.stop()
+    sim_table, detailed_tables = sim_result
 
     sim_display = sim_table[
         [
@@ -1020,7 +1114,7 @@ if run_simulation:
     st.session_state["explorador_category_tables"] = category_tables
     st.session_state["explorador_elimination_table"] = elimination_table
     st.session_state["explorador_group_stage_table"] = group_stage_table
-    st.rerun()
+    # Mantem o dialog aberto no estado final para o usuario ver a mensagem de conclusao.
 
 sim_display_state = st.session_state.get("explorador_sim_display")
 group_stage_table = st.session_state.get("explorador_group_stage_table")

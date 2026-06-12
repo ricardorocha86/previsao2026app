@@ -8,6 +8,7 @@ import pandas as pd
 
 from utils.simulador_oficial import (
     BaseMatchSimulator,
+    build_official_round_of_32,
     ordenar_grupo_oficial,
     randomizar_grupos,
 )
@@ -74,62 +75,7 @@ def _same_official_top32_bracket(
     seconds: dict[str, dict],
     best_thirds: list[dict],
 ) -> list[dict]:
-    pools = {
-        "E": ["A", "B", "C", "D", "F"],
-        "I": ["C", "D", "F", "G", "H"],
-        "A": ["C", "E", "F", "H", "I"],
-        "L": ["E", "H", "I", "J", "K"],
-        "D": ["B", "E", "F", "I", "J"],
-        "G": ["A", "E", "H", "I", "J"],
-        "B": ["E", "F", "G", "I", "J"],
-        "K": ["D", "E", "I", "J", "L"],
-    }
-    third_matchups = {}
-    available_thirds = best_thirds.copy()
-    for group_winner in ["E", "I", "A", "L", "D", "G", "B", "K"]:
-        for idx, third in enumerate(available_thirds):
-            if third["group"] in pools[group_winner]:
-                third_matchups[group_winner] = available_thirds.pop(idx)
-                break
-        else:
-            if available_thirds:
-                third_matchups[group_winner] = available_thirds.pop(0)
-
-    current_round = [
-        seconds.get("A"),
-        seconds.get("B"),
-        firsts.get("E"),
-        third_matchups.get("E"),
-        firsts.get("F"),
-        seconds.get("C"),
-        firsts.get("C"),
-        seconds.get("F"),
-        firsts.get("I"),
-        third_matchups.get("I"),
-        seconds.get("E"),
-        seconds.get("I"),
-        firsts.get("A"),
-        third_matchups.get("A"),
-        firsts.get("L"),
-        third_matchups.get("L"),
-        firsts.get("D"),
-        third_matchups.get("D"),
-        firsts.get("G"),
-        third_matchups.get("G"),
-        seconds.get("K"),
-        seconds.get("L"),
-        firsts.get("H"),
-        seconds.get("J"),
-        firsts.get("B"),
-        third_matchups.get("B"),
-        firsts.get("J"),
-        seconds.get("H"),
-        firsts.get("K"),
-        third_matchups.get("K"),
-        seconds.get("D"),
-        seconds.get("G"),
-    ]
-    return [team for team in current_round if team is not None]
+    return build_official_round_of_32(firsts, seconds, best_thirds)
 
 
 def _find_opponent(current_round: list[dict], team_key: str) -> str | None:

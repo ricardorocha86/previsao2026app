@@ -30,7 +30,7 @@ from experimento_calibracao_mercado import canonical_team_key
 # ==========================================
 # CONFIGURAÇÃO
 # ==========================================
-DATA_DIR = BASE_DIR / "dados"
+DATA_DIR = BASE_DIR / "dataset"
 RESULTADO_DIR = BASE_DIR / "resultados"
 VETOR_FORCA_PATH = RESULTADO_DIR / "vetor_forca_otimo.json"
 OUTPUT_PARAMS = RESULTADO_DIR / "parametros_otimos.json"
@@ -80,7 +80,7 @@ def load_features() -> pd.DataFrame:
     
     result["fifa_force_01"] = minmax_scale(result["FIFA_Current_Points"])
     result["elo_force_01"] = minmax_scale(result["ELO_Rating"])
-    result["momentum_force_01"] = minmax_scale(result["ELO_Chg_1A"])
+    result["momentum_force_01"] = minmax_scale(result["ELO_Chg_2A"])
     result["market_force_01"] = minmax_scale(result["Valor_Mercado_Milhoes_EUR"])
     result["world_cup_apps_01"] = minmax_scale(result["Participações_Copa_Mundo"])
     result["world_cup_best_raw"] = result["Melhor_Resultado_Copa_Mundo"].map(parse_world_cup_history_score)
@@ -89,11 +89,16 @@ def load_features() -> pd.DataFrame:
     return result
 
 
-def load_target_vector() -> dict:
-    """Carrega o vetor de força ótimo encontrado pelo Estágio 1."""
+def load_target_vector() -> tuple[dict, float, dict]:
+    """
+    Carrega o vetor de força ótimo do Estágio 1.
+    Retorna (vetor, offset_usado_na_simulacao, metricas_do_teto).
+    """
     with open(VETOR_FORCA_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
-    return data["vetor_forca"]
+    offset = float(data.get("parametros_simulacao", {}).get("offset", 0.10))
+    teto = data.get("metricas_finais", {})
+    return data["vetor_forca"], offset, teto
 
 
 def compute_model_force(features_df, params):
@@ -163,14 +168,48 @@ def objective_weighted(params, features_df, target_forces, target_probs):
 # ==========================================
 # BUSCA GLOBAL DOS PARÂMETROS
 # ==========================================
-def ajustar_parametros():
+def rmspe_acima_1pct(p_market, p_sim):
+    """RMSPE restrito às seleções com prob de mercado >= 1% (métrica principal)."""
+    mask = p_market >= 0.01
+    if not mask.any():
+        return float("nan")
+    return float(np.sqrt(np.mean(((p_sim[mask] - p_market[mask]) / p_market[mask]) ** 2)))
+
+
+def validar_ponta_a_ponta(best_params, features_df, p_market, n_sims, seed=123):
+    """
+    Fecha o ciclo: simula a Copa com os pesos ajustados e compara as
+    probabilidades de campeão com o mercado (a métrica que importa).
+    """
+    from buscador_vetor_forca import (
+        MEDIA_GOLS, USAR_DIXON_COLES, RHO_DIXON_COLES,
+        build_match_cache, simulate_and_count_champions, compute_metrics,
+    )
+    offset = best_params[7]
+    model_forces = compute_model_force(features_df, best_params)
+    team_keys = list(features_df["team_key"])
+    groups = features_df.groupby("Grupo")["team_key"].apply(list).to_dict()
+    strengths = {tk: float(offset + model_forces[i]) for i, tk in enumerate(team_keys)}
+
+    cache = build_match_cache(team_keys, strengths, MEDIA_GOLS, USAR_DIXON_COLES, RHO_DIXON_COLES)
+    counts = simulate_and_count_champions(
+        groups, strengths, cache, n_sims, rng=np.random.default_rng(seed))
+    p_sim = np.array([counts[tk] / n_sims for tk in team_keys])
+
+    metricas = compute_metrics(p_market, p_sim)
+    metricas["rmspe_1pct"] = rmspe_acima_1pct(p_market, p_sim)
+    return metricas, p_sim
+
+
+def ajustar_parametros(val_sims=128_000):
     print("=" * 65)
     print("🔧 ESTÁGIO 2: Ajustando Parâmetros do Modelo ao Vetor de Força")
     print("=" * 65)
-    
+
     # Carregar dados
     features_df = load_features()
-    target_vector = load_target_vector()
+    target_vector, offset_fixo, metricas_teto = load_target_vector()
+    print(f"   Offset fixo (herdado do Estágio 1): {offset_fixo:.2f}")
     
     # Alinhar a ordem
     team_keys = list(features_df["team_key"])
@@ -186,8 +225,8 @@ def ajustar_parametros():
     print(f"   Força máxima alvo: {target_forces.max():.4f}")
     print(f"   Força mínima alvo: {target_forces.min():.4f}")
     
-    # Bounds para os parâmetros
-    # (w_fifa, w_elo, w_momentum, w_market, w_history, w_host, elasticidade, offset)
+    # Bounds para os parâmetros de busca (7 dimensões — o offset NÃO entra:
+    # ele não afeta a comparação com o vetor e fica fixo no valor do Estágio 1)
     bounds = [
         (0.0, 1.0),   # w_fifa
         (0.0, 1.0),   # w_elo
@@ -196,13 +235,16 @@ def ajustar_parametros():
         (0.0, 1.0),   # w_history
         (0.0, 0.5),   # w_host (mais limitado, é binário)
         (0.5, 3.0),   # elasticidade
-        (0.0, 0.30),  # offset (não usado no vetor, mas mantido por consistência)
     ]
-    
+
     param_names = [
         "peso_fifa", "peso_elo", "peso_momentum", "peso_mercado",
         "peso_historico", "peso_anfitriao", "elasticidade", "offset"
     ]
+
+    def objective_busca(p7, features_df, target_forces, target_probs):
+        """Recompõe o vetor de 8 parâmetros com o offset fixo."""
+        return objective_weighted(np.append(p7, offset_fixo), features_df, target_forces, target_probs)
     
     print("\n🔍 Rodando Differential Evolution (busca global)...")
     start_time = time.time()
@@ -212,14 +254,14 @@ def ajustar_parametros():
     def callback(xk, convergence):
         iteration_count[0] += 1
         if iteration_count[0] % 50 == 0:
-            loss = objective_weighted(xk, features_df, target_forces, target_probs)
+            loss = objective_busca(xk, features_df, target_forces, target_probs)
             print(f"   Geração {iteration_count[0]:4d} | Loss: {loss:.8f}")
-    
+
     result = differential_evolution(
-        objective_weighted,
+        objective_busca,
         bounds=bounds,
         args=(features_df, target_forces, target_probs),
-        maxiter=2000,
+        maxiter=600,
         popsize=30,
         tol=1e-12,
         seed=42,
@@ -227,14 +269,14 @@ def ajustar_parametros():
         workers=1,
         polish=True,  # Refina com L-BFGS-B no final
     )
-    
+
     elapsed = time.time() - start_time
     print(f"\n   Concluído em {elapsed:.1f}s")
     print(f"   Função objetivo final: {result.fun:.10f}")
     print(f"   Convergiu: {result.success}")
-    
-    # Extrair parâmetros
-    best_params = result.x
+
+    # Extrair parâmetros (recompõe os 8 com o offset fixo do Estágio 1)
+    best_params = np.append(result.x, offset_fixo)
     w_sum = sum(best_params[:6])
     
     # Calcular força do modelo com os parâmetros ótimos
@@ -259,7 +301,7 @@ def ajustar_parametros():
         pct = (best_params[i] / w_sum * 100) if w_sum > 0 else 0
         print(f"  {name:<20} = {best_params[i]:.4f}  ({pct:>6.2f}%)")
     print(f"  {'elasticidade':<20} = {best_params[6]:.4f}")
-    print(f"  {'offset':<20} = {best_params[7]:.4f}")
+    print(f"  {'offset':<20} = {best_params[7]:.4f}  (fixo, herdado do Estágio 1)")
     
     print("\n📊 QUALIDADE DO AJUSTE")
     print(f"  MSE:         {mse:.8f}")
@@ -268,9 +310,25 @@ def ajustar_parametros():
     print(f"  Pearson ρ:   {rho_pearson:.6f}")
     print(f"  Spearman ρ:  {rho_spearman:.6f}")
     
+    # ==========================================
+    # VALIDAÇÃO PONTA A PONTA (pesos -> simulação -> mercado)
+    # ==========================================
+    print("\n" + "=" * 65)
+    print(f"🔁 VALIDAÇÃO PONTA A PONTA ({val_sims:,} copas com os pesos ajustados)")
+    metricas_e2e, p_sim_e2e = validar_ponta_a_ponta(
+        best_params, features_df, target_probs, n_sims=val_sims)
+    print(f"  RMSPE (prob mercado >= 1%): {metricas_e2e['rmspe_1pct']:.4f}   <- métrica principal")
+    print(f"  KL-Div:                     {metricas_e2e['kl_div']:.6f}")
+    print(f"  MAE:                        {metricas_e2e['mae']:.6f}")
+    print(f"  Spearman ρ:                 {metricas_e2e['spearman_rho']:.4f}")
+    if metricas_teto:
+        print(f"  — Teto (vetor livre do Estágio 1): KL={metricas_teto.get('kl_div', float('nan')):.6f} "
+              f"| MAE={metricas_teto.get('mae', float('nan')):.6f}")
+        print("  O gap entre o ajuste e o teto = o que as 6 variáveis NÃO explicam do mercado.")
+
     # Salvar resultados
     RESULTADO_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     output = {
         "descricao": "Parâmetros do modelo ajustados ao vetor de força ótimo (Estágio 2)",
         "parametros": {name: float(best_params[i]) for i, name in enumerate(param_names)},
@@ -285,6 +343,8 @@ def ajustar_parametros():
             "pearson_rho": float(rho_pearson),
             "spearman_rho": float(rho_spearman),
         },
+        "metricas_ponta_a_ponta": {k: float(v) for k, v in metricas_e2e.items()},
+        "validacao_n_sims": val_sims,
         "funcao_objetivo": float(result.fun),
     }
     
@@ -323,4 +383,9 @@ def ajustar_parametros():
 
 
 if __name__ == "__main__":
-    ajustar_parametros()
+    import argparse
+    parser = argparse.ArgumentParser(description='Estágio 2: pesos que explicam o vetor de força do mercado')
+    parser.add_argument('--val-sims', type=int, default=128_000,
+                        help='copas na validação ponta a ponta')
+    args = parser.parse_args()
+    ajustar_parametros(val_sims=args.val_sims)

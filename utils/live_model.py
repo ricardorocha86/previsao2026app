@@ -7,7 +7,11 @@ import pandas as pd
 from scipy.stats import poisson
 
 from utils import config as app_config
-from utils.simulador_oficial import dixon_coles_correction, parse_world_cup_score
+from utils.simulador_oficial import (
+    build_official_round_of_32,
+    dixon_coles_correction,
+    parse_world_cup_score,
+)
 
 
 HOSTS_2026 = {"Estados Unidos", "México", "Canadá"}
@@ -57,7 +61,7 @@ def build_default_force_table(dataframe: pd.DataFrame, params: DefaultModelParam
 
     result["fifa_force_01"] = minmax_scale(result.get("FIFA_Current_Points", pd.Series(0, index=result.index)))
     result["elo_force_01"] = minmax_scale(result.get("ELO_Rating", pd.Series(0, index=result.index)))
-    result["momentum_force_01"] = minmax_scale(result.get("ELO_Chg_1A", pd.Series(0, index=result.index)))
+    result["momentum_force_01"] = minmax_scale(result.get("ELO_Chg_2A", pd.Series(0, index=result.index)))
     result["market_force_01"] = minmax_scale(result.get("Valor_Mercado_Milhoes_EUR", pd.Series(0, index=result.index)))
     result["world_cup_apps_01"] = minmax_scale(result.get("Participações_Copa_Mundo", pd.Series(0, index=result.index)))
     result["world_cup_best_raw"] = result.get(
@@ -279,60 +283,4 @@ def build_round_of_32(records: list[dict], strengths: dict[str, float]) -> list[
         reverse=True,
     )[:8]
 
-    pools = {
-        "E": ["A", "B", "C", "D", "F"],
-        "I": ["C", "D", "F", "G", "H"],
-        "A": ["C", "E", "F", "H", "I"],
-        "L": ["E", "H", "I", "J", "K"],
-        "D": ["B", "E", "F", "I", "J"],
-        "G": ["A", "E", "H", "I", "J"],
-        "B": ["E", "F", "G", "I", "J"],
-        "K": ["D", "E", "I", "J", "L"],
-    }
-
-    third_by_slot = {}
-    available = thirds.copy()
-    for slot_group in ["E", "I", "A", "L", "D", "G", "B", "K"]:
-        for index, candidate in enumerate(available):
-            if candidate["group"] in pools[slot_group]:
-                third_by_slot[slot_group] = available.pop(index)
-                break
-        else:
-            if available:
-                third_by_slot[slot_group] = available.pop(0)
-
-    bracket = [
-        seconds.get("A"),
-        seconds.get("B"),
-        firsts.get("E"),
-        third_by_slot.get("E"),
-        firsts.get("F"),
-        seconds.get("C"),
-        firsts.get("C"),
-        seconds.get("F"),
-        firsts.get("I"),
-        third_by_slot.get("I"),
-        seconds.get("E"),
-        seconds.get("I"),
-        firsts.get("A"),
-        third_by_slot.get("A"),
-        firsts.get("L"),
-        third_by_slot.get("L"),
-        firsts.get("D"),
-        third_by_slot.get("D"),
-        firsts.get("G"),
-        third_by_slot.get("G"),
-        seconds.get("K"),
-        seconds.get("L"),
-        firsts.get("H"),
-        seconds.get("J"),
-        firsts.get("B"),
-        third_by_slot.get("B"),
-        firsts.get("J"),
-        seconds.get("H"),
-        firsts.get("K"),
-        third_by_slot.get("K"),
-        seconds.get("D"),
-        seconds.get("G"),
-    ]
-    return [row for row in bracket if row is not None]
+    return build_official_round_of_32(firsts, seconds, thirds)

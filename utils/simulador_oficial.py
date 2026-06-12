@@ -1,6 +1,67 @@
 import numpy as np
 from scipy.stats import poisson
 from utils.config import MEDIA_GOLS_COPA
+from utils.third_place_annex_c import official_third_place_assignment
+
+THIRD_PLACE_POOLS = {
+    "E": ["A", "B", "C", "D", "F"],
+    "I": ["C", "D", "F", "G", "H"],
+    "A": ["C", "E", "F", "H", "I"],
+    "L": ["E", "H", "I", "J", "K"],
+    "D": ["B", "E", "F", "I", "J"],
+    "G": ["A", "E", "H", "I", "J"],
+    "B": ["E", "F", "G", "I", "J"],
+    "K": ["D", "E", "I", "J", "L"],
+}
+
+def assign_third_place_slots(best_thirds, group_key="group"):
+    """Alinha os 3os colocados aos slots oficiais via Anexo C da FIFA."""
+    thirds_by_group = {third[group_key]: third for third in best_thirds}
+    group_assignment = official_third_place_assignment(thirds_by_group.keys())
+    return {
+        slot_group: thirds_by_group[third_group]
+        for slot_group, third_group in group_assignment.items()
+    }
+
+
+def build_official_round_of_32(firsts, seconds, best_thirds):
+    """Retorna os 32 times na ordem visual/oficial do bracket FIFA 2026."""
+    third_by_slot = assign_third_place_slots(best_thirds)
+    bracket = [
+        firsts.get("E"),
+        third_by_slot.get("E"),
+        firsts.get("I"),
+        third_by_slot.get("I"),
+        seconds.get("A"),
+        seconds.get("B"),
+        firsts.get("F"),
+        seconds.get("C"),
+        seconds.get("K"),
+        seconds.get("L"),
+        firsts.get("H"),
+        seconds.get("J"),
+        firsts.get("D"),
+        third_by_slot.get("D"),
+        firsts.get("G"),
+        third_by_slot.get("G"),
+        firsts.get("C"),
+        seconds.get("F"),
+        seconds.get("E"),
+        seconds.get("I"),
+        firsts.get("A"),
+        third_by_slot.get("A"),
+        firsts.get("L"),
+        third_by_slot.get("L"),
+        firsts.get("J"),
+        seconds.get("H"),
+        seconds.get("D"),
+        seconds.get("G"),
+        firsts.get("B"),
+        third_by_slot.get("B"),
+        firsts.get("K"),
+        third_by_slot.get("K"),
+    ]
+    return [team for team in bracket if team is not None]
 
 # ============================================================
 # 1. FUNÇÕES MATEMÁTICAS E AUXILIARES (ex-simulation.py)
@@ -235,19 +296,7 @@ def simulate_one_cup_oficial(groups, strengths, rng, match_simulator: BaseMatchS
     segundos = {r["group"]: r for r in records if r["group_position"] == 2}
     terceiros = sorted([r for r in records if r["group_position"] == 3], key=lambda c: (c["points"], c["goal_diff"], c["goals_for"], c["fair_play"], strengths[c["team_key"]]), reverse=True)[:8]
     
-    # Chaveamento Pools (Artigo 12.6)
-    pools = {"E":["A","B","C","D","F"],"I":["C","D","F","G","H"],"A":["C","E","F","H","I"],"L":["E","H","I","J","K"],"D":["B","E","F","I","J"],"G":["A","E","H","I","J"],"B":["E","F","G","I","J"],"K":["D","E","I","J","L"]}
-    confrontos_3 = {}
-    t_disp = terceiros.copy()
-    for g_p in ["E","I","A","L","D","G","B","K"]:
-        for i, t in enumerate(t_disp):
-            if t["group"] in pools[g_p]:
-                confrontos_3[g_p] = t_disp.pop(i); break
-        else:
-            if t_disp: confrontos_3[g_p] = t_disp.pop(0)
-
-    current_round = [segundos.get("A"), segundos.get("B"), primeiros.get("E"), confrontos_3.get("E"), primeiros.get("F"), segundos.get("C"), primeiros.get("C"), segundos.get("F"), primeiros.get("I"), confrontos_3.get("I"), segundos.get("E"), segundos.get("I"), primeiros.get("A"), confrontos_3.get("A"), primeiros.get("L"), confrontos_3.get("L"), primeiros.get("D"), confrontos_3.get("D"), primeiros.get("G"), confrontos_3.get("G"), segundos.get("K"), segundos.get("L"), primeiros.get("H"), segundos.get("J"), primeiros.get("B"), confrontos_3.get("B"), primeiros.get("J"), segundos.get("H"), primeiros.get("K"), confrontos_3.get("K"), segundos.get("D"), segundos.get("G")]
-    current_round = [t for t in current_round if t is not None]
+    current_round = build_official_round_of_32(primeiros, segundos, terceiros)
 
     for r in current_round: history[r["team_key"]]["Top32"] = 1
     

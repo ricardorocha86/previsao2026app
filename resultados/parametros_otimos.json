@@ -1,0 +1,40 @@
+{
+  "descricao": "Parâmetros do modelo ajustados ao vetor de força ótimo (Estágio 2)",
+  "parametros": {
+    "peso_fifa": 0.011523658345756027,
+    "peso_elo": 0.8053951978384574,
+    "peso_momentum": 0.006919214189651024,
+    "peso_mercado": 0.6741584768758544,
+    "peso_historico": 0.028701986091639542,
+    "peso_anfitriao": 0.12326325973100807,
+    "elasticidade": 1.0879338703140382,
+    "offset": 0.1
+  },
+  "parametros_normalizados_pct": {
+    "peso_fifa": 0.6984197085132507,
+    "peso_elo": 48.812960470966075,
+    "peso_momentum": 0.41935602501236524,
+    "peso_mercado": 40.8590356277593,
+    "peso_historico": 1.7395545892122781,
+    "peso_anfitriao": 7.470673578536726
+  },
+  "metricas_ajuste": {
+    "mse": 0.0049410436310670346,
+    "mae": 0.056294032250641,
+    "r_squared": 0.8991350403099805,
+    "pearson_rho": 0.9602774091296766,
+    "spearman_rho": 0.9469170646982196
+  },
+  "metricas_ponta_a_ponta": {
+    "kl_div": 0.09458544989236489,
+    "mae": 0.003675827594483115,
+    "mse": 4.5729491722183955e-05,
+    "rmse": 0.006762358443781574,
+    "rmspe": 0.5954330148450824,
+    "max_err": 0.0255473112848508,
+    "spearman_rho": 0.9420451433443925,
+    "rmspe_1pct": 0.2291072615711542
+  },
+  "validacao_n_sims": 128000,
+  "funcao_objetivo": 0.0027989008458328716
+}

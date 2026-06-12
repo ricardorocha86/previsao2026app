@@ -67,7 +67,7 @@ with st.sidebar:
         "Seleção",
         "FIFA_Current_Points",
         "ELO_Rating",
-        "ELO_Chg_1A",
+        "ELO_Chg_2A",
         "Valor_Mercado_Milhoes_EUR",
         "Participações_Copa_Mundo",
         "Melhor_Resultado_Copa_Mundo",
@@ -117,7 +117,7 @@ def build_model_variables(dataframe: pd.DataFrame) -> pd.DataFrame:
     variable_specs = {
         "FIFA": first_existing_column(dataframe, ["FIFA_Current_Points"]),
         "ELO": first_existing_column(dataframe, ["ELO_Rating"]),
-        "Momento": first_existing_column(dataframe, ["ELO_Chg_1A"]),
+        "Momento": first_existing_column(dataframe, ["ELO_Chg_2A"]),
         "Mercado": first_existing_column(dataframe, ["Valor_Mercado_Milhoes_EUR"]),
     }
 

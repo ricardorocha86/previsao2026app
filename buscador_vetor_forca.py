@@ -39,14 +39,16 @@ MEDIA_GOLS = 3.0
 USAR_DIXON_COLES = True
 RHO_DIXON_COLES = -0.13
 
-N_SIMS_POR_ITERACAO = 80_000     # Copas por iteração (mais = menos ruído)
-MAX_ITERACOES = 60               # Máximo de iterações
+N_SIMS_POR_ITERACAO = 40_000     # Copas por iteração (mais = menos ruído)
+MAX_ITERACOES = 40               # Máximo de iterações
+SEED = 42                        # Semente base (reprodutibilidade; varia por iteração)
 ALPHA_INICIAL = 0.40             # Learning rate inicial (agressivo no começo)
 ALPHA_FINAL = 0.15               # Learning rate final (conservador na convergência)
 TOLERANCIA_KL = 0.005            # Critério de parada: KL-Divergence
 TOLERANCIA_MAE = 0.003           # Critério de parada alternativo: MAE
-FORCA_MINIMA = 0.01              # Piso para evitar força zero
-OFFSET_SIMULACAO = 0.10          # Offset aplicado nas forças para simulação
+FORCA_MINIMA = 0.15              # Piso real do vetor de forca
+FORCA_MAXIMA = 1.00              # Teto real do vetor de forca
+OFFSET_SIMULACAO = 0.0           # Vetor otimizado e usado puro, sem offset.
 
 OUTPUT_DIR = BASE_DIR / "resultados"
 OUTPUT_VETOR = OUTPUT_DIR / "vetor_forca_otimo.json"
@@ -56,7 +58,7 @@ OUTPUT_LOG = OUTPUT_DIR / "log_busca_vetor.csv"
 # ==========================================
 # FUNÇÕES DE APOIO
 # ==========================================
-DATA_DIR = BASE_DIR / "dados"
+DATA_DIR = BASE_DIR / "dataset"
 
 def find_latest_enriched_dataset() -> Path:
     candidates = sorted(DATA_DIR.glob("FIFA_ELO_DadosSeleções_*.xlsx"))
@@ -105,9 +107,10 @@ def build_match_cache(team_keys, strengths, media_gols, usar_dc, rho):
     return cache
 
 
-def simulate_and_count_champions(groups, strengths, match_cache, n_sims):
+def simulate_and_count_champions(groups, strengths, match_cache, n_sims, rng=None):
     """Simula n_sims copas e retorna a contagem de títulos por seleção."""
-    rng = np.random.default_rng()
+    if rng is None:
+        rng = np.random.default_rng()
     match_simulator = PoissonMatchSimulator(match_cache=match_cache, strengths=strengths)
     
     champion_counts = {team_key: 0 for team_key in strengths}
@@ -133,8 +136,9 @@ def compute_metrics(p_market, p_sim):
     # MAE
     mae = float(np.mean(np.abs(p_sim - p_market)))
     
-    # RMSE
-    rmse = float(np.sqrt(np.mean((p_sim - p_market) ** 2)))
+    # EQM / RMSE
+    mse = float(np.mean((p_sim - p_market) ** 2))
+    rmse = float(np.sqrt(mse))
     
     # RMSPE
     base = np.maximum(p_market, 0.001)
@@ -150,6 +154,7 @@ def compute_metrics(p_market, p_sim):
     return {
         "kl_div": kl_div,
         "mae": mae,
+        "mse": mse,
         "rmse": rmse,
         "rmspe": rmspe,
         "max_err": max_err,
@@ -157,16 +162,27 @@ def compute_metrics(p_market, p_sim):
     }
 
 
+def normalizar_forcas(forces, forca_minima=FORCA_MINIMA, forca_maxima=FORCA_MAXIMA):
+    """Aplica piso e reescala pelo maior valor preservando diferencas no topo."""
+    forces = np.asarray(forces, dtype=float)
+    forces = np.maximum(forces, forca_minima)
+    maximum = float(np.max(forces))
+    if maximum > 0:
+        forces = forces / maximum * forca_maxima
+    return np.clip(forces, forca_minima, forca_maxima)
+
+
 # ==========================================
 # CARREGAMENTO DE DADOS
 # ==========================================
-def load_data():
+def load_data(reference_path=None):
     """Carrega dataset e odds de mercado, retorna dict com tudo necessário."""
     dataset_path = find_latest_enriched_dataset()
     df = pd.read_excel(dataset_path)
     df["team_key"] = df["NomeIngles"].map(canonical_team_key)
     
-    odds_df = load_market_target(ODDS_PATH)
+    odds_path = Path(reference_path) if reference_path else Path(ODDS_PATH)
+    odds_df = load_market_target(odds_path)
     df = df.merge(odds_df[["team_key", "market_prob"]], on="team_key", how="left")
     
     groups = df.groupby("Grupo")["team_key"].apply(list).to_dict()
@@ -178,25 +194,28 @@ def load_data():
         "groups": groups,
         "team_keys": team_keys,
         "market_probs": market_probs,
+        "reference_path": str(odds_path),
     }
 
 
 # ==========================================
 # ALGORITMO PRINCIPAL: COORDINATE DESCENT
 # ==========================================
-def buscar_vetor_forca():
+def buscar_vetor_forca(reference_path=None):
     print("=" * 65)
     print("🎯 ESTÁGIO 1: Buscando Vetor de Força Ótimo")
     print(f"   Simulações por iteração: {N_SIMS_POR_ITERACAO:,}")
     print(f"   Máximo de iterações:     {MAX_ITERACOES}")
     print(f"   Alpha: {ALPHA_INICIAL:.2f} → {ALPHA_FINAL:.2f}")
     print(f"   Tolerância KL:           {TOLERANCIA_KL}")
+    print("   Offset:                  0.00 (vetor puro, sem soma)")
     print("=" * 65)
     
-    data = load_data()
+    data = load_data(reference_path)
     groups = data["groups"]
     team_keys = data["team_keys"]
     market_probs = data["market_probs"]
+    print(f"   Referencia:              {data['reference_path']}")
     
     # Vetor de probabilidades de mercado (ordenado por team_key)
     p_market = np.array([market_probs[tk] for tk in team_keys])
@@ -207,14 +226,11 @@ def buscar_vetor_forca():
     # (a relação força→prob é não-linear e amplifica diferenças)
     # -------------------------------------------------------
     forces = np.sqrt(p_market / p_market.max())
-    forces = np.clip(forces, FORCA_MINIMA, 1.0)
-    
-    # Normalizar para que a maior seja 1.0
-    forces = forces / forces.max()
-    
+    forces = normalizar_forcas(forces)
+
     # Log de iterações
     iteration_log = []
-    best_kl = float("inf")
+    best_mse = float("inf")
     best_forces = forces.copy()
     best_iter = 0
     stagnation_count = 0
@@ -225,14 +241,16 @@ def buscar_vetor_forca():
         # Learning rate com decay linear
         alpha = ALPHA_INICIAL - (ALPHA_INICIAL - ALPHA_FINAL) * (iteration - 1) / max(1, MAX_ITERACOES - 1)
         
-        # Construir strengths dict com offset
-        strengths = {tk: float(OFFSET_SIMULACAO + forces[i]) for i, tk in enumerate(team_keys)}
+        # Construir strengths dict com a forca pura
+        strengths = {tk: float(forces[i]) for i, tk in enumerate(team_keys)}
         
         # Construir cache de partidas
         match_cache = build_match_cache(team_keys, strengths, MEDIA_GOLS, USAR_DIXON_COLES, RHO_DIXON_COLES)
         
-        # Simular
-        champion_counts = simulate_and_count_champions(groups, strengths, match_cache, N_SIMS_POR_ITERACAO)
+        # Simular (semente determinística que varia por iteração: o ruído
+        # se compensa entre iterações sem "viciar" numa realização única)
+        rng_iter = np.random.default_rng(SEED * 100_000 + iteration)
+        champion_counts = simulate_and_count_champions(groups, strengths, match_cache, N_SIMS_POR_ITERACAO, rng=rng_iter)
         
         # Probabilidades simuladas
         p_sim = np.array([champion_counts[tk] / N_SIMS_POR_ITERACAO for tk in team_keys])
@@ -254,8 +272,8 @@ def buscar_vetor_forca():
         })
         
         # Melhor resultado?
-        if metrics["kl_div"] < best_kl:
-            best_kl = metrics["kl_div"]
+        if metrics["mse"] < best_mse:
+            best_mse = metrics["mse"]
             best_forces = forces.copy()
             best_iter = iteration
             stagnation_count = 0
@@ -269,7 +287,7 @@ def buscar_vetor_forca():
         eta_sec = int(eta % 60)
         print(
             f"{marker} Iter {iteration:03d}/{MAX_ITERACOES} | "
-            f"KL: {metrics['kl_div']:.5f} | MAE: {metrics['mae']:.5f} | "
+            f"EQM: {metrics['mse']:.8f} | KL: {metrics['kl_div']:.5f} | MAE: {metrics['mae']:.5f} | "
             f"RMSPE: {metrics['rmspe']:.4f} | ρ: {metrics['spearman_rho']:.4f} | "
             f"α: {alpha:.3f} | {avg_iter_time:.1f}s/iter | ETA: {eta_min:02d}:{eta_sec:02d}"
         )
@@ -297,12 +315,9 @@ def buscar_vetor_forca():
         
         # Aplicar ajuste
         forces = forces * (ratio_clipped ** alpha)
-        
-        # Garantir limites
-        forces = np.clip(forces, FORCA_MINIMA, None)
-        
-        # Renormalizar: maior = 1.0
-        forces = forces / forces.max()
+
+        # Renormalizar: pior=0.15 e melhor=1.00
+        forces = normalizar_forcas(forces)
     
     else:
         print(f"\n⚠️ Atingiu o limite de {MAX_ITERACOES} iterações. Usando melhor resultado (iter {best_iter}).")
@@ -314,18 +329,21 @@ def buscar_vetor_forca():
     print("\n" + "=" * 65)
     print("🔍 VALIDAÇÃO FINAL (simulação com o vetor ótimo)")
     
-    strengths_final = {tk: float(OFFSET_SIMULACAO + forces[i]) for i, tk in enumerate(team_keys)}
+    strengths_final = {tk: float(forces[i]) for i, tk in enumerate(team_keys)}
     match_cache_final = build_match_cache(team_keys, strengths_final, MEDIA_GOLS, USAR_DIXON_COLES, RHO_DIXON_COLES)
     
     # Simular mais copas para validação
     n_validacao = N_SIMS_POR_ITERACAO * 2
     print(f"   Simulando {n_validacao:,} copas de validação...")
-    champion_counts_final = simulate_and_count_champions(groups, strengths_final, match_cache_final, n_validacao)
+    champion_counts_final = simulate_and_count_champions(
+        groups, strengths_final, match_cache_final, n_validacao,
+        rng=np.random.default_rng(SEED - 1))
     p_sim_final = np.array([champion_counts_final[tk] / n_validacao for tk in team_keys])
     metrics_final = compute_metrics(p_market, p_sim_final)
     
     print(f"   KL-Div:      {metrics_final['kl_div']:.6f}")
     print(f"   MAE:         {metrics_final['mae']:.6f}")
+    print(f"   EQM:         {metrics_final['mse']:.8f}")
     print(f"   RMSE:        {metrics_final['rmse']:.6f}")
     print(f"   RMSPE:       {metrics_final['rmspe']:.4f}")
     print(f"   Spearman ρ:  {metrics_final['spearman_rho']:.4f}")
@@ -343,8 +361,13 @@ def buscar_vetor_forca():
             "dixon_coles": USAR_DIXON_COLES,
             "rho": RHO_DIXON_COLES,
             "offset": OFFSET_SIMULACAO,
+            "forca_minima": FORCA_MINIMA,
+            "forca_maxima": FORCA_MAXIMA,
+            "criterio_otimizacao": "mse",
+            "ajuste": "multiplicativo_livre_clip015_max1",
             "n_sims_por_iteracao": N_SIMS_POR_ITERACAO,
             "iteracao_convergencia": best_iter,
+            "referencia_probabilidades": data["reference_path"],
         },
         "metricas_finais": metrics_final,
         "vetor_forca": {tk: float(forces[i]) for i, tk in enumerate(team_keys)},
@@ -393,4 +416,15 @@ def buscar_vetor_forca():
 
 
 if __name__ == "__main__":
-    buscar_vetor_forca()
+    import argparse
+    parser = argparse.ArgumentParser(description='Estágio 1: vetor de força que reproduz o mercado')
+    parser.add_argument('--sims', type=int, default=N_SIMS_POR_ITERACAO,
+                        help='copas simuladas por iteração')
+    parser.add_argument('--max-iter', type=int, default=MAX_ITERACOES,
+                        help='máximo de iterações')
+    parser.add_argument('--referencia', type=str, default=None,
+                        help='arquivo XLSX/CSV com probabilidades de referencia')
+    args = parser.parse_args()
+    N_SIMS_POR_ITERACAO = args.sims
+    MAX_ITERACOES = args.max_iter
+    buscar_vetor_forca(reference_path=args.referencia)

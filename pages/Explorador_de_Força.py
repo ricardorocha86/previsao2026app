@@ -9,6 +9,7 @@ from datetime import datetime as _dt
 
 import pandas as pd
 import streamlit as st
+from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,9 +20,11 @@ from utils.simulador_analitico import run_detailed_simulation
 from utils.forca_core import (
     BASE_DIR,
     DATA_DIR,
+    OPTIMIZED_FORCE_VECTOR_PATH,
     build_combined,
     compute_match_probabilities,
     load_force_dataframe,
+    load_optimized_force_vector,
     render_param_sidebar,
     team_with_flag,
     TEAM_FLAG_EMOJI,
@@ -455,13 +458,42 @@ def _extract_br_time(raw: str) -> str:
     return raw
 
 
+def _load_group_prediction_schedule() -> list[dict]:
+    schedule_candidates = [
+        DATA_DIR / "calendario_copa_2026.json",
+        BASE_DIR / "assets" / "calendario_copa_2026.json",
+        BASE_DIR / "assets" / "previsoes_jogos.json",
+    ]
+
+    for path in schedule_candidates:
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return data
+
+    return []
+
+
+def _normalize_schedule_match(match: dict) -> dict:
+    group = match.get("group") or match.get("Grupo") or ""
+    group = str(group).replace("Grupo ", "").strip()
+
+    return {
+        "group": group,
+        "date": match.get("date") or match.get("Data") or "",
+        "location_time": match.get("location_time") or match.get("Horário/Local") or "",
+        "br_time": match.get("br_time") or match.get("Horário Brasília") or "",
+        "team_a": match.get("team_a") or match.get("Seleção A") or "",
+        "team_b": match.get("team_b") or match.get("Seleção B") or "",
+    }
+
+
 def generate_group_predictions(
     dataframe: pd.DataFrame, media_gols: float, usar_dixon_coles: bool, rho_dixon_coles: float
 ) -> pd.DataFrame:
-    try:
-        with open(DATA_DIR / "calendario_copa_2026.json", "r", encoding="utf-8") as f:
-            schedule = json.load(f)
-    except FileNotFoundError:
+    schedule = _load_group_prediction_schedule()
+    if not schedule:
         return pd.DataFrame()
 
     name_map = {
@@ -471,7 +503,8 @@ def generate_group_predictions(
     }
 
     rows = []
-    for match in schedule:
+    for raw_match in schedule:
+        match = _normalize_schedule_match(raw_match)
         team_a_str = name_map.get(match["team_a"], match["team_a"])
         team_b_str = name_map.get(match["team_b"], match["team_b"])
 
@@ -508,6 +541,77 @@ def generate_group_predictions(
     return df_res
 
 
+def _style_prediction_worksheet(worksheet, row_count: int) -> None:
+    header_fill = PatternFill(start_color="1A1A2E", end_color="1A1A2E", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    center_align = Alignment(horizontal="center", vertical="center")
+
+    base_fill = PatternFill(start_color="EBF4FA", end_color="EBF4FA", fill_type="solid")
+    win_fill = PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid")
+    draw_fill = PatternFill(start_color="E8E8E8", end_color="E8E8E8", fill_type="solid")
+
+    for col in range(1, 10):
+        cell = worksheet.cell(row=1, column=col)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center_align
+
+    worksheet.column_dimensions['A'].width = 10
+    worksheet.column_dimensions['B'].width = 14
+    worksheet.column_dimensions['C'].width = 35
+    worksheet.column_dimensions['D'].width = 16
+    worksheet.column_dimensions['E'].width = 20
+    worksheet.column_dimensions['F'].width = 12
+    worksheet.column_dimensions['G'].width = 12
+    worksheet.column_dimensions['H'].width = 12
+    worksheet.column_dimensions['I'].width = 20
+
+    for row in range(2, row_count + 2):
+        for col in range(1, 10):
+            worksheet.cell(row=row, column=col).fill = base_fill
+
+            if col in [1, 2, 3, 4, 6, 7, 8]:
+                worksheet.cell(row=row, column=col).alignment = center_align
+
+        worksheet.cell(row=row, column=5).alignment = Alignment(horizontal="right", vertical="center")
+        worksheet.cell(row=row, column=5).font = Font(bold=True)
+        worksheet.cell(row=row, column=9).alignment = Alignment(horizontal="left", vertical="center")
+        worksheet.cell(row=row, column=9).font = Font(bold=True)
+
+        worksheet.cell(row=row, column=6).fill = win_fill
+        worksheet.cell(row=row, column=7).fill = draw_fill
+        worksheet.cell(row=row, column=8).fill = win_fill
+        worksheet.cell(row=row, column=6).number_format = "0.0%"
+        worksheet.cell(row=row, column=7).number_format = "0.0%"
+        worksheet.cell(row=row, column=8).number_format = "0.0%"
+
+
+def _add_predictions_sheet_to_excel_bytes(excel_bytes: bytes, matches_df: pd.DataFrame) -> bytes:
+    if matches_df is None or matches_df.empty:
+        return excel_bytes
+
+    workbook = load_workbook(BytesIO(excel_bytes))
+    if "Previsão Jogos" in workbook.sheetnames:
+        return excel_bytes
+
+    insert_at = 2 if len(workbook.sheetnames) >= 2 else len(workbook.sheetnames)
+    worksheet = workbook.create_sheet("Previsão Jogos", insert_at)
+
+    for col_idx, column in enumerate(matches_df.columns, start=1):
+        worksheet.cell(row=1, column=col_idx, value=column)
+
+    for row_idx, row in enumerate(matches_df.itertuples(index=False), start=2):
+        for col_idx, value in enumerate(row, start=1):
+            worksheet.cell(row=row_idx, column=col_idx, value=value)
+
+    _style_prediction_worksheet(worksheet, len(matches_df))
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
 def simulation_excel_bytes(
     simulation_df: pd.DataFrame,
     info_df: pd.DataFrame,
@@ -520,57 +624,10 @@ def simulation_excel_bytes(
         info_df.to_excel(writer, sheet_name="Parâmetros", index=False)
 
         if matches_df is not None and not matches_df.empty:
-            # Formatar percentuais para exibicao sem converter pra string pra não estragar
-            # Mas pandas to_excel precisa ou da string ou que apliquemos style.
             export_matches = matches_df.copy()
-            for col in ["Vitória A", "Empate", "Vitória B"]:
-                export_matches[col] = export_matches[col].apply(lambda x: f"{x:.1%}")
-
             export_matches.to_excel(writer, sheet_name="Previsão Jogos", index=False)
-            workbook = writer.book
             worksheet = writer.sheets["Previsão Jogos"]
-
-            header_fill = PatternFill(start_color="1A1A2E", end_color="1A1A2E", fill_type="solid")
-            header_font = Font(color="FFFFFF", bold=True)
-            center_align = Alignment(horizontal="center", vertical="center")
-
-            # Novo esquema de cores
-            base_fill = PatternFill(start_color="EBF4FA", end_color="EBF4FA", fill_type="solid") # Azul bem clarinho para toda a planilha
-            win_fill = PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid") # Azul um pouco mais forte para vitórias
-            draw_fill = PatternFill(start_color="E8E8E8", end_color="E8E8E8", fill_type="solid") # Cinza claro para empate
-
-            for col in range(1, 10):
-                cell = worksheet.cell(row=1, column=col)
-                cell.fill = header_fill
-                cell.font = header_font
-                cell.alignment = center_align
-
-            worksheet.column_dimensions['A'].width = 10   # Grupo
-            worksheet.column_dimensions['B'].width = 14   # Data (dd/mm/yyyy)
-            worksheet.column_dimensions['C'].width = 35   # Local (cidade, país)
-            worksheet.column_dimensions['D'].width = 16   # Horário Brasília (HHhMM)
-            worksheet.column_dimensions['E'].width = 20   # Seleção A
-            worksheet.column_dimensions['F'].width = 12   # Vitória A
-            worksheet.column_dimensions['G'].width = 12   # Empate
-            worksheet.column_dimensions['H'].width = 12   # Vitória B
-            worksheet.column_dimensions['I'].width = 20   # Seleção B
-
-            for row in range(2, len(export_matches) + 2):
-                for col in range(1, 10):
-                    # Preenchimento base (azul claro)
-                    worksheet.cell(row=row, column=col).fill = base_fill
-
-                    if col in [1, 2, 3, 4, 6, 7, 8]:
-                        worksheet.cell(row=row, column=col).alignment = center_align
-
-                worksheet.cell(row=row, column=5).alignment = Alignment(horizontal="right", vertical="center")
-                worksheet.cell(row=row, column=5).font = Font(bold=True)
-                worksheet.cell(row=row, column=9).alignment = Alignment(horizontal="left", vertical="center")
-                worksheet.cell(row=row, column=9).font = Font(bold=True)
-
-                worksheet.cell(row=row, column=6).fill = win_fill
-                worksheet.cell(row=row, column=7).fill = draw_fill
-                worksheet.cell(row=row, column=8).fill = win_fill
+            _style_prediction_worksheet(worksheet, len(export_matches))
 
         if extra_sheets:
             for sheet_name, sheet_df in extra_sheets.items():
@@ -707,7 +764,13 @@ div[data-testid="stDialog"] div[data-testid="stAlert"] p {
     return sim_table, detailed_result["tables"]
 
 
-def load_saved_simulation(file_path: str | os.PathLike, combined_df: pd.DataFrame) -> bool:
+def load_saved_simulation(
+    file_path: str | os.PathLike,
+    combined_df: pd.DataFrame,
+    media_gols: float,
+    usar_dixon_coles: bool,
+    rho_dixon_coles: float,
+) -> bool:
     import unicodedata
 
     def normalize_str(s: str) -> str:
@@ -840,6 +903,13 @@ def load_saved_simulation(file_path: str | os.PathLike, combined_df: pd.DataFram
 
         with open(file_path, "rb") as f:
             excel_bytes = f.read()
+        matches_df = generate_group_predictions(
+            dataframe=combined_df,
+            media_gols=media_gols,
+            usar_dixon_coles=usar_dixon_coles,
+            rho_dixon_coles=rho_dixon_coles,
+        )
+        excel_bytes = _add_predictions_sheet_to_excel_bytes(excel_bytes, matches_df)
 
         st.session_state["explorador_sim_display"] = sim_display
         st.session_state["explorador_detailed_tables"] = detailed_tables if has_any_detailed else None
@@ -872,6 +942,9 @@ de chaveamento abaixo e rode a simulação.
 params = render_param_sidebar()
 base_df = load_force_dataframe()
 combined_df, weight_sum = build_combined(base_df, params)
+media_gols = params.media_gols
+usar_dixon_coles = params.usar_dixon_coles
+rho_dixon_coles = params.rho_dixon_coles
 
 # --- Sidebar Loader Logic ---
 resultados_dir = BASE_DIR / "resultados"
@@ -899,7 +972,13 @@ selected_option = st.sidebar.radio(
 if selected_option != "Nenhuma (Simular em Tempo Real)":
     if st.session_state.get("explorador_loaded_filename") != selected_option:
         file_path = resultados_dir / selected_option
-        if load_saved_simulation(file_path, combined_df):
+        if load_saved_simulation(
+            file_path,
+            combined_df,
+            media_gols,
+            usar_dixon_coles,
+            rho_dixon_coles,
+        ):
             st.rerun()
 else:
     if st.session_state.get("explorador_loaded_filename") is not None:
@@ -912,12 +991,9 @@ else:
         st.session_state["explorador_loaded_filename"] = None
         st.rerun()
 
-if weight_sum <= 0:
+if not params.usar_vetor_otimizado and weight_sum <= 0:
     st.warning("A soma dos pesos está zerada. Ajuste ao menos um peso na barra lateral para construir a força resultante.")
 
-media_gols = params.media_gols
-usar_dixon_coles = params.usar_dixon_coles
-rho_dixon_coles = params.rho_dixon_coles
 tipo_simulacao = "Completa"
 
 if "explorador_sim_excel_bytes" not in st.session_state:
@@ -1036,17 +1112,37 @@ if run_simulation:
         }
     )
 
-    info_df = pd.DataFrame(
+    info_rows = [
+        {"Parametro": "Etapa", "Valor": "Pré-Torneio"},
+        {"Parametro": "Modo do vetor de força", "Valor": "Otimizado" if params.usar_vetor_otimizado else "Indicador parametrizado"},
+    ]
+    if params.usar_vetor_otimizado:
+        optimized_vector_data = load_optimized_force_vector()
+        optimized_params = optimized_vector_data.get("parametros_simulacao", {})
+        optimized_metrics = optimized_vector_data.get("metricas_finais", {})
+        info_rows.extend(
+            [
+                {"Parametro": "Arquivo do vetor", "Valor": OPTIMIZED_FORCE_VECTOR_PATH.name},
+                {"Parametro": "Offset do vetor", "Valor": 0.0},
+                {"Parametro": "KL final do vetor", "Valor": optimized_metrics.get("kl_div", "")},
+                {"Parametro": "MAE final do vetor", "Valor": optimized_metrics.get("mae", "")},
+            ]
+        )
+    else:
+        info_rows.extend(
+            [
+                {"Parametro": "Peso FIFA", "Valor": params.weight_fifa},
+                {"Parametro": "Peso ELO", "Valor": params.weight_elo},
+                {"Parametro": "Peso Momento", "Valor": params.weight_momentum},
+                {"Parametro": "Peso Mercado", "Valor": params.weight_market},
+                {"Parametro": "Peso Histórico Copas", "Valor": params.weight_history},
+                {"Parametro": "Peso Anfitrião", "Valor": params.weight_host},
+                {"Parametro": "Offset", "Valor": params.offset},
+                {"Parametro": "Elasticidade", "Valor": params.elasticidade},
+            ]
+        )
+    info_rows.extend(
         [
-            {"Parametro": "Etapa", "Valor": "Pré-Torneio"},
-            {"Parametro": "Peso FIFA", "Valor": params.weight_fifa},
-            {"Parametro": "Peso ELO", "Valor": params.weight_elo},
-            {"Parametro": "Peso Momento", "Valor": params.weight_momentum},
-            {"Parametro": "Peso Mercado", "Valor": params.weight_market},
-            {"Parametro": "Peso Histórico Copas", "Valor": params.weight_history},
-            {"Parametro": "Peso Anfitrião", "Valor": params.weight_host},
-            {"Parametro": "Offset", "Valor": params.offset},
-            {"Parametro": "Elasticidade", "Valor": params.elasticidade},
             {"Parametro": "Média de gols", "Valor": media_gols},
             {"Parametro": "Usar Dixon-Coles", "Valor": usar_dixon_coles},
             {"Parametro": "Rho Dixon-Coles", "Valor": rho_dixon_coles},
@@ -1054,6 +1150,7 @@ if run_simulation:
             {"Parametro": "Tipo de Simulação", "Valor": tipo_simulacao},
         ]
     )
+    info_df = pd.DataFrame(info_rows)
 
     matches_df = generate_group_predictions(
         dataframe=combined_df, media_gols=media_gols,

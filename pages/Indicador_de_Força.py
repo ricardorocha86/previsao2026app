@@ -1,14 +1,38 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
+from pathlib import Path
 
 import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.helpers import inject_custom_css
-from utils.forca_core import build_combined, load_force_dataframe, render_param_sidebar
+from utils.forca_core import build_combined, canonical_team_key, load_force_dataframe, render_param_sidebar
+
+
+@st.cache_data
+def _carregar_vetor_forca_mercado_cached(caminho: str, mtime: float) -> dict:
+    # mtime na chave do cache: re-rodar o buscador invalida o cache sozinho.
+    try:
+        with open(caminho, encoding="utf-8") as arquivo:
+            vetor = json.load(arquivo).get("vetor_forca", {})
+            return {
+                canonical_team_key(str(team_key)): float(forca)
+                for team_key, forca in vetor.items()
+            }
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def carregar_vetor_forca_mercado() -> dict:
+    """Vetor de força otimizado (Estágio 1 da calibração), se existir."""
+    caminho = Path(__file__).resolve().parent.parent / "resultados" / "vetor_forca_otimo.json"
+    if not caminho.exists():
+        return {}
+    return _carregar_vetor_forca_mercado_cached(str(caminho), caminho.stat().st_mtime)
 
 
 inject_custom_css()
@@ -30,7 +54,7 @@ params = render_param_sidebar()
 base_df = load_force_dataframe()
 combined_df, weight_sum = build_combined(base_df, params)
 
-if weight_sum <= 0:
+if not params.usar_vetor_otimizado and weight_sum <= 0:
     st.warning("A soma dos pesos está zerada. Ajuste ao menos um peso para construir a força resultante.")
 
 effective_fifa = params.weight_fifa / weight_sum if weight_sum > 0 else 0.0
@@ -40,20 +64,29 @@ effective_market = params.weight_market / weight_sum if weight_sum > 0 else 0.0
 effective_history = params.weight_history / weight_sum if weight_sum > 0 else 0.0
 effective_host = params.weight_host / weight_sum if weight_sum > 0 else 0.0
 
-col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns(6)
+if params.usar_vetor_otimizado:
+    col_m1, col_m2, col_m3 = st.columns(3)
+    with col_m1:
+        st.metric("Modo", "Vetor otimizado")
+    with col_m2:
+        st.metric("Média de gols", f"{params.media_gols:.2f}")
+    with col_m3:
+        st.metric("Seleções com força", f"{combined_df['forca_com_offset'].notna().sum()}")
+else:
+    col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns(6)
 
-with col_m1:
-    st.metric("Efetivo FIFA", f"{effective_fifa:.1%}")
-with col_m2:
-    st.metric("Efetivo ELO", f"{effective_elo:.1%}")
-with col_m3:
-    st.metric("Efetivo Momento", f"{effective_momentum:.1%}")
-with col_m4:
-    st.metric("Efetivo Mercado", f"{effective_market:.1%}")
-with col_m5:
-    st.metric("Efetivo História", f"{effective_history:.1%}")
-with col_m6:
-    st.metric("Efetivo Anfitrião", f"{effective_host:.1%}")
+    with col_m1:
+        st.metric("Efetivo FIFA", f"{effective_fifa:.1%}")
+    with col_m2:
+        st.metric("Efetivo ELO", f"{effective_elo:.1%}")
+    with col_m3:
+        st.metric("Efetivo Momento", f"{effective_momentum:.1%}")
+    with col_m4:
+        st.metric("Efetivo Mercado", f"{effective_market:.1%}")
+    with col_m5:
+        st.metric("Efetivo História", f"{effective_history:.1%}")
+    with col_m6:
+        st.metric("Efetivo Anfitrião", f"{effective_host:.1%}")
 
 st.markdown("### Tabela de Força")
 
@@ -86,6 +119,17 @@ display_table = combined_df[
 )
 
 display_table = display_table.copy()
+
+# Vetor de força otimizado que reproduz o mercado de previsões (régua da calibração).
+# Mesma escala 0-1 da coluna "Força", para comparação direta lado a lado.
+vetor_forca_mercado = carregar_vetor_forca_mercado()
+if vetor_forca_mercado:
+    display_table.insert(
+        display_table.columns.get_loc("Força Ajustada") + 1,
+        "Vetor Força Otimizado",
+        combined_df["team_key"].map(vetor_forca_mercado).to_numpy(),
+    )
+
 display_table.insert(0, "Rank", range(1, len(display_table) + 1))
 
 st.dataframe(
@@ -104,5 +148,11 @@ st.dataframe(
         "Força": st.column_config.NumberColumn(format="%.3f"),
         "Força Ajustada": st.column_config.NumberColumn(format="%.3f"),
         "Prob Implicita": st.column_config.NumberColumn(format="%.4f"),
+        "Vetor Força Otimizado": st.column_config.NumberColumn(
+            "Vetor Força Otimizado",
+            format="%.3f",
+            help="Vetor de força que reproduz a probabilidade do mercado de previsões "
+                 "(régua encontrada na calibração). Mesma escala da coluna Força.",
+        ),
     },
 )

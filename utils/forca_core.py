@@ -7,6 +7,7 @@ do modelo na barra lateral — que ficam compartilhados entre as três páginas.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -119,6 +120,7 @@ class ModelParams:
     elasticidade: float
     usar_dixon_coles: bool
     rho_dixon_coles: float
+    usar_vetor_otimizado: bool = False
 
 
 def find_latest_enriched_dataset() -> Path:
@@ -150,7 +152,7 @@ def load_force_table(dataset_path: str) -> pd.DataFrame:
         "FIFA_Current_Points",
         "ELO_Ranking",
         "ELO_Rating",
-        "ELO_Chg_1A",
+        "ELO_Chg_2A",
         "Valor_Mercado_Milhoes_EUR",
         "Participações_Copa_Mundo",
         "Melhor_Resultado_Copa_Mundo",
@@ -167,7 +169,7 @@ def load_force_table(dataset_path: str) -> pd.DataFrame:
 
     result["fifa_force_01"] = minmax_scale(result["FIFA_Current_Points"])
     result["elo_force_01"] = minmax_scale(result["ELO_Rating"])
-    result["momentum_force_01"] = minmax_scale(result["ELO_Chg_1A"])
+    result["momentum_force_01"] = minmax_scale(result["ELO_Chg_2A"])
     result["market_force_01"] = minmax_scale(result["Valor_Mercado_Milhoes_EUR"])
     result["world_cup_apps_01"] = minmax_scale(result["Participações_Copa_Mundo"])
     result["world_cup_best_raw"] = result["Melhor_Resultado_Copa_Mundo"].map(parse_world_cup_score)
@@ -223,6 +225,69 @@ def build_combined_table(
     result.index = result.index + 1
     result.insert(0, "ranking_forca", result.index)
     return result, weight_sum
+
+
+OPTIMIZED_FORCE_VECTOR_PATH = BASE_DIR / "resultados" / "vetor_forca_otimo.json"
+
+
+@st.cache_data
+def _load_optimized_force_vector_cached(path: str, mtime: float) -> dict:
+    # mtime entra na chave do cache: se o arquivo for reescrito (ex.: re-rodar
+    # o buscador), o cache invalida sozinho e o vetor novo é carregado.
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    vector = data.get("vetor_forca")
+    if not isinstance(vector, dict) or not vector:
+        raise ValueError("Arquivo do vetor otimizado nao contem 'vetor_forca'.")
+    return data
+
+
+def load_optimized_force_vector(path: str | None = None) -> dict:
+    """Carrega o vetor de força otimizado (cache invalida quando o arquivo muda)."""
+    vector_path = Path(path) if path else OPTIMIZED_FORCE_VECTOR_PATH
+    return _load_optimized_force_vector_cached(str(vector_path), vector_path.stat().st_mtime)
+
+
+def _team_key_series(dataframe: pd.DataFrame) -> pd.Series:
+    if "team_key" in dataframe.columns:
+        return dataframe["team_key"].astype(str).map(canonical_team_key)
+    if "NomeIngles" in dataframe.columns:
+        return dataframe["NomeIngles"].astype(str).map(canonical_team_key)
+    if "Seleção" in dataframe.columns:
+        return dataframe["Seleção"].astype(str).map(canonical_team_key)
+    if "SeleÃ§Ã£o" in dataframe.columns:
+        return dataframe["SeleÃ§Ã£o"].astype(str).map(canonical_team_key)
+    raise ValueError("DataFrame sem coluna de selecao para aplicar o vetor otimizado.")
+
+
+def build_optimized_force_table(dataframe: pd.DataFrame, vector_data: dict | None = None) -> tuple[pd.DataFrame, float]:
+    result = dataframe.copy()
+    vector_data = vector_data or load_optimized_force_vector()
+    vector = {canonical_team_key(str(key)): float(value) for key, value in vector_data["vetor_forca"].items()}
+    team_keys = _team_key_series(result)
+    missing = sorted(set(team_keys) - set(vector))
+    if missing:
+        raise ValueError("Vetor otimizado nao tem forca para: " + ", ".join(missing))
+
+    result["team_key"] = team_keys
+    result["forca_resultante_01"] = team_keys.map(vector).astype(float)
+    result["forca_elastica"] = result["forca_resultante_01"]
+    result["forca_com_offset"] = result["forca_resultante_01"]
+
+    sort_columns = [
+        column
+        for column in ["forca_resultante_01", "fifa_force_01", "elo_force_01", "market_force_01"]
+        if column in result.columns
+    ]
+    result = result.sort_values(by=sort_columns, ascending=False).reset_index(drop=True)
+    if "market_prob" in result.columns:
+        result["ranking_odds"] = (
+            result["market_prob"].rank(method="min", ascending=False).fillna(len(result) + 1).astype(int)
+        )
+    result.index = result.index + 1
+    result.insert(0, "ranking_forca", result.index)
+    result["rank_forca"] = result["ranking_forca"]
+    return result, 1.0
 
 
 def poisson_matrix(
@@ -354,11 +419,16 @@ def render_param_sidebar() -> ModelParams:
             "param_weight_history": DEFAULT_WEIGHT_HISTORY,
             "param_weight_host": DEFAULT_WEIGHT_HOST,
             "param_media_gols": DEFAULT_MEDIA_GOLS,
+            "param_media_gols_vetor_otimizado": 3.0,
             "param_offset": DEFAULT_OFFSET,
             "param_elasticidade": DEFAULT_ELASTICIDADE,
             "param_usar_dixon_coles": DEFAULT_USAR_DIXON_COLES,
             "param_rho_dixon_coles": DEFAULT_RHO_DIXON_COLES,
+            "param_usar_vetor_forca_otimizado": False,
         }
+    else:
+        st.session_state["model_sidebar_params"].setdefault("param_usar_vetor_forca_otimizado", False)
+        st.session_state["model_sidebar_params"].setdefault("param_media_gols_vetor_otimizado", 3.0)
 
     # Sincroniza do dicionário persistente para as chaves atuais do session_state
     for key, val in st.session_state["model_sidebar_params"].items():
@@ -366,35 +436,63 @@ def render_param_sidebar() -> ModelParams:
             st.session_state[key] = val
 
     with st.sidebar:
-        st.markdown("#### Indicador de Força")
-        
-        # Primeira linha (3 colunas): Ranking ELO, Ranking FIFA, Mercado
-        col_w1, col_w2, col_w3 = st.columns(3)
-        with col_w1:
-            weight_elo = st.slider("Ranking ELO", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_elo"]), step=0.01, key="param_weight_elo")
-        with col_w2:
-            weight_fifa = st.slider("Ranking FIFA", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_fifa"]), step=0.01, key="param_weight_fifa")
-        with col_w3:
-            weight_market = st.slider("Mercado", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_market"]), step=0.01, key="param_weight_market")
+        st.markdown("#### Vetor de Força")
+        usar_vetor_otimizado = st.toggle(
+            "Usar vetor de força otimizado",
+            value=bool(st.session_state["model_sidebar_params"]["param_usar_vetor_forca_otimizado"]),
+            key="param_usar_vetor_forca_otimizado",
+        )
 
-        # Segunda linha (3 colunas): Momento, Histórico, Anfitrião
-        col_w4, col_w5, col_w6 = st.columns(3)
-        with col_w4:
-            weight_momentum = st.slider("Momento", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_momentum"]), step=0.01, key="param_weight_momentum")
-        with col_w5:
-            weight_history = st.slider("Histórico", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_history"]), step=0.01, key="param_weight_history")
-        with col_w6:
-            weight_host = st.slider("Anfitrião", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_host"]), step=0.01, key="param_weight_host")
+        optimized_defaults = {}
+        if usar_vetor_otimizado:
+            try:
+                optimized_defaults = load_optimized_force_vector().get("parametros_simulacao", {})
+            except Exception as error:  # noqa: BLE001
+                st.error(f"Erro ao carregar o vetor de força otimizado: {error}")
+                st.stop()
 
-        st.markdown("#### Parâmetros do Modelo")
+        if usar_vetor_otimizado:
+            weight_fifa = float(st.session_state["model_sidebar_params"]["param_weight_fifa"])
+            weight_elo = float(st.session_state["model_sidebar_params"]["param_weight_elo"])
+            weight_momentum = float(st.session_state["model_sidebar_params"]["param_weight_momentum"])
+            weight_market = float(st.session_state["model_sidebar_params"]["param_weight_market"])
+            weight_history = float(st.session_state["model_sidebar_params"]["param_weight_history"])
+            weight_host = float(st.session_state["model_sidebar_params"]["param_weight_host"])
+            offset = 0.0
+            elasticidade = 1.0
+            media_gols = 3.0
+            st.session_state["model_sidebar_params"]["param_media_gols_vetor_otimizado"] = media_gols
+            st.session_state["param_media_gols_vetor_otimizado"] = media_gols
+        else:
+            st.markdown("#### Indicador de Força")
+            
+            # Primeira linha (3 colunas): Ranking ELO, Ranking FIFA, Mercado
+            col_w1, col_w2, col_w3 = st.columns(3)
+            with col_w1:
+                weight_elo = st.slider("Ranking ELO", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_elo"]), step=0.01, key="param_weight_elo")
+            with col_w2:
+                weight_fifa = st.slider("Ranking FIFA", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_fifa"]), step=0.01, key="param_weight_fifa")
+            with col_w3:
+                weight_market = st.slider("Mercado", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_market"]), step=0.01, key="param_weight_market")
 
-        col7, col8, col9 = st.columns(3)
-        with col7:
-            media_gols = st.slider("Média de gols", min_value=0.5, max_value=5.0, value=float(st.session_state["model_sidebar_params"]["param_media_gols"]), step=0.05, key="param_media_gols")
-        with col8:
-            offset = st.slider("Offset", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_offset"]), step=0.01, key="param_offset")
-        with col9:
-            elasticidade = st.slider("Elasticidade", min_value=0.1, max_value=5.0, value=float(st.session_state["model_sidebar_params"]["param_elasticidade"]), step=0.01, key="param_elasticidade")
+            # Segunda linha (3 colunas): Momento, Histórico, Anfitrião
+            col_w4, col_w5, col_w6 = st.columns(3)
+            with col_w4:
+                weight_momentum = st.slider("Momento", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_momentum"]), step=0.01, key="param_weight_momentum")
+            with col_w5:
+                weight_history = st.slider("Histórico", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_history"]), step=0.01, key="param_weight_history")
+            with col_w6:
+                weight_host = st.slider("Anfitrião", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_weight_host"]), step=0.01, key="param_weight_host")
+
+            st.markdown("#### Parâmetros do Modelo")
+
+            col7, col8, col9 = st.columns(3)
+            with col7:
+                media_gols = st.slider("Média de gols", min_value=0.5, max_value=5.0, value=float(st.session_state["model_sidebar_params"]["param_media_gols"]), step=0.05, key="param_media_gols")
+            with col8:
+                offset = st.slider("Offset", min_value=0.0, max_value=1.0, value=float(st.session_state["model_sidebar_params"]["param_offset"]), step=0.01, key="param_offset")
+            with col9:
+                elasticidade = st.slider("Elasticidade", min_value=0.1, max_value=5.0, value=float(st.session_state["model_sidebar_params"]["param_elasticidade"]), step=0.01, key="param_elasticidade")
 
         # Dixon-Coles e rho desativados da interface (mantidos internamente com usar_dixon_coles=True e rho=-0.13)
         # Descomente o bloco abaixo caso queira reativar os widgets na interface no futuro:
@@ -405,11 +503,11 @@ def render_param_sidebar() -> ModelParams:
         # with col11:
         #     rho_dixon_coles = st.slider("Parâmetro rho", min_value=-0.30, max_value=0.00, value=float(st.session_state["model_sidebar_params"]["param_rho_dixon_coles"]), step=0.01, disabled=not usar_dixon_coles, key="param_rho_dixon_coles")
         
-        usar_dixon_coles = True
-        rho_dixon_coles = -0.13
+        usar_dixon_coles = bool(optimized_defaults.get("dixon_coles", True)) if usar_vetor_otimizado else True
+        rho_dixon_coles = float(optimized_defaults.get("rho", -0.13)) if usar_vetor_otimizado else -0.13
 
         st.markdown('<div class="reset-btn-container">', unsafe_allow_html=True)
-        if st.button("🔄 Resetar para Valores Iniciais", key="reset_model_params_btn", use_container_width=True):
+        if not usar_vetor_otimizado and st.button("🔄 Resetar para Valores Iniciais", key="reset_model_params_btn", use_container_width=True):
             st.session_state["model_sidebar_params"] = {
                 "param_weight_fifa": DEFAULT_WEIGHT_FIFA,
                 "param_weight_market": DEFAULT_WEIGHT_MARKET,
@@ -418,10 +516,12 @@ def render_param_sidebar() -> ModelParams:
                 "param_weight_history": DEFAULT_WEIGHT_HISTORY,
                 "param_weight_host": DEFAULT_WEIGHT_HOST,
                 "param_media_gols": DEFAULT_MEDIA_GOLS,
+                "param_media_gols_vetor_otimizado": 3.0,
                 "param_offset": DEFAULT_OFFSET,
                 "param_elasticidade": DEFAULT_ELASTICIDADE,
                 "param_usar_dixon_coles": DEFAULT_USAR_DIXON_COLES,
                 "param_rho_dixon_coles": DEFAULT_RHO_DIXON_COLES,
+                "param_usar_vetor_forca_otimizado": False,
             }
             # Remove chaves do session_state dos sliders para recarregarem os novos valores padrão
             for key in st.session_state["model_sidebar_params"].keys():
@@ -450,6 +550,7 @@ def render_param_sidebar() -> ModelParams:
         elasticidade=elasticidade,
         usar_dixon_coles=usar_dixon_coles,
         rho_dixon_coles=rho_dixon_coles,
+        usar_vetor_otimizado=usar_vetor_otimizado,
     )
 
 
@@ -465,6 +566,9 @@ def load_force_dataframe() -> pd.DataFrame:
 
 def build_combined(base_df: pd.DataFrame, params: ModelParams) -> tuple[pd.DataFrame, float]:
     """Aplica os pesos/offset/elasticidade dos parâmetros e devolve (tabela, soma_pesos)."""
+    if params.usar_vetor_otimizado:
+        return build_optimized_force_table(base_df)
+
     return build_combined_table(
         dataframe=base_df,
         weight_fifa=params.weight_fifa,

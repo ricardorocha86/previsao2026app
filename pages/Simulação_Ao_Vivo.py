@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.data_loader import carregar_dados
 from utils.helpers import get_bandeira_url, inject_custom_css
-from utils.forca_core import ModelParams, render_param_sidebar
+from utils.forca_core import ModelParams, build_optimized_force_table, render_param_sidebar
 from utils.live_model import (
     DefaultModelParams,
     apply_group_result,
@@ -933,7 +933,10 @@ params = render_param_sidebar()
 
 try:
     raw_df = carregar_dados()
-    force_df = build_default_force_table(raw_df, params)
+    if params.usar_vetor_otimizado:
+        force_df, _ = build_optimized_force_table(raw_df)
+    else:
+        force_df = build_default_force_table(raw_df, params)
 except Exception as error:
     st.error(f"Erro ao carregar dados da simulação ao vivo: {error}")
     st.stop()
@@ -942,11 +945,29 @@ groups = build_groups(force_df)
 strengths = dict(zip(force_df["Seleção"], force_df["forca_com_offset"]))
 bandeiras_dict = dict(zip(force_df["Seleção"], force_df["Link_Bandeira"]))
 top_team = str(force_df.iloc[0]["Seleção"])
+force_signature = (
+    params.usar_vetor_otimizado,
+    params.media_gols,
+    tuple((team, round(float(force), 8)) for team, force in sorted(strengths.items())),
+)
 
 ensure_state(groups, strengths)
+if (
+    st.session_state.get("live_force_signature") != force_signature
+    and not st.session_state.get("live_running")
+):
+    st.session_state["live_group_tables"] = new_group_table(groups, strengths)
+    st.session_state["live_group_fixtures"] = build_group_fixtures(groups)
+    st.session_state["live_group_index"] = 0
+    st.session_state["live_matches"] = []
+    st.session_state["live_knockout_matches"] = []
+    st.session_state["live_current_phase_matches"] = []
+    st.session_state["live_current_round"] = []
+    st.session_state["live_force_signature"] = force_signature
 
 if start_new_cup:
     initialize_new_cup(groups, strengths)
+    st.session_state["live_force_signature"] = force_signature
     st.session_state["live_saved_result"] = False
 
 if clear_history:

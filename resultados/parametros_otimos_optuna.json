@@ -1,0 +1,29 @@
+{
+  "descricao": "Parâmetros refinados end-to-end (Optuna, Estágio 3), escolhidos por reavaliação do top com mais copas",
+  "trial_escolhido": 0,
+  "parametros": {
+    "peso_fifa": 0.11,
+    "peso_elo": 0.96,
+    "peso_momentum": 0.04,
+    "peso_mercado": 0.99,
+    "peso_historico": 0.0,
+    "peso_anfitriao": 0.13,
+    "elasticidade": 0.95,
+    "offset": 0.1
+  },
+  "metricas_reavaliacao": {
+    "RMSPE_1pct": 0.24607581465304337,
+    "RMSPE_full": 0.7476484456157482,
+    "MSE": 5.805537858765101e-05,
+    "MAE": 0.004495560701550526,
+    "MAPE": 0.568811255519782,
+    "KL_Div": 0.08689865403557699
+  },
+  "config": {
+    "sims_por_trial": 8000,
+    "trials_executados": 41,
+    "reeval_sims": 128000,
+    "seed": 42,
+    "limiar_prob": 0.01
+  }
+}

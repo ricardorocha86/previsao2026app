@@ -949,8 +949,15 @@ rho_dixon_coles = params.rho_dixon_coles
 # --- Sidebar Loader Logic ---
 resultados_dir = BASE_DIR / "resultados"
 os.makedirs(resultados_dir, exist_ok=True)
-saved_files = [f for f in os.listdir(resultados_dir) if f.endswith(".xlsx")]
-saved_files_sorted = sorted(saved_files, key=lambda x: ("pre-torneio" in x.lower() or "oficial" in x.lower(), x), reverse=True)
+official_simulation_files = [
+    "Simulação Oficial Inicio da Copa 11.06.2026.xlsx",
+    "Simulação Oficial Pré-Convocação 11.05.2026.xlsx",
+]
+saved_files_sorted = [
+    filename
+    for filename in official_simulation_files
+    if (resultados_dir / filename).exists()
+]
 radio_options = ["Nenhuma (Simular em Tempo Real)"] + saved_files_sorted
 
 st.sidebar.markdown("---")

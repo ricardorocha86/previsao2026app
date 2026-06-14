@@ -20,6 +20,11 @@ from utils.forca_core import (
     load_force_dataframe,
     render_param_sidebar,
 )
+from utils.resultados_oficiais import (
+    LockedGroupResults,
+    load_official_group_results,
+    render_official_results_sidebar,
+)
 from utils.live_model import (
     apply_group_result,
     build_round_of_32,
@@ -412,6 +417,43 @@ def build_group_fixtures(groups: dict[str, list[str]]) -> list[dict]:
             for team_b in teams[index_a + 1 :]:
                 fixtures.append({"phase": "groups", "group": group, "team_a": team_a, "team_b": team_b})
     return fixtures
+
+
+def group_match_result(
+    fixture: dict,
+    strengths: dict[str, float],
+    rng: np.random.Generator,
+    params: ModelParams,
+    locked_group_results: LockedGroupResults | None = None,
+) -> dict:
+    if locked_group_results:
+        locked = locked_group_results.get((fixture["group"], fixture["team_a"], fixture["team_b"]))
+        if locked is not None:
+            goals_a, goals_b, winner_code = locked
+            winner = None
+            if winner_code == 1:
+                winner = fixture["team_a"]
+            elif winner_code == 2:
+                winner = fixture["team_b"]
+            return {
+                "team_a": fixture["team_a"],
+                "team_b": fixture["team_b"],
+                "goals_a": goals_a,
+                "goals_b": goals_b,
+                "winner": winner,
+                "penalty_winner": None,
+                "extra_time": False,
+                "official_result": True,
+            }
+
+    return simulate_match(
+        fixture["team_a"],
+        fixture["team_b"],
+        strengths,
+        rng,
+        params,
+        knockout=False,
+    )
 
 
 def phase_progress() -> tuple[int, int]:
@@ -865,6 +907,7 @@ def run_group_stage(
     delay: float,
     slots: tuple,
     top_team: str,
+    locked_group_results: LockedGroupResults | None = None,
 ) -> None:
     rng = np.random.default_rng(st.session_state["live_seed"] + len(st.session_state.get("live_matches", [])))
     fixtures = st.session_state["live_group_fixtures"]
@@ -872,13 +915,12 @@ def run_group_stage(
 
     for index in range(st.session_state["live_group_index"], len(fixtures)):
         fixture = fixtures[index]
-        match = simulate_match(
-            fixture["team_a"],
-            fixture["team_b"],
-            strengths,
-            rng,
-            params,
-            knockout=False,
+        match = group_match_result(
+            fixture=fixture,
+            strengths=strengths,
+            rng=rng,
+            params=params,
+            locked_group_results=locked_group_results,
         )
         match.update({"phase": "groups", "group": fixture["group"], "slot": f"{index + 1}/{len(fixtures)}"})
         apply_group_result(group_tables[fixture["group"]], match, rng)
@@ -994,16 +1036,16 @@ def simulate_cup_summary(
     strengths: dict[str, float],
     params: ModelParams,
     rng: np.random.Generator,
+    locked_group_results: LockedGroupResults | None = None,
 ) -> dict:
     group_tables = new_group_table(groups, strengths)
     for fixture in build_group_fixtures(groups):
-        match = simulate_match(
-            fixture["team_a"],
-            fixture["team_b"],
-            strengths,
-            rng,
-            params,
-            knockout=False,
+        match = group_match_result(
+            fixture=fixture,
+            strengths=strengths,
+            rng=rng,
+            params=params,
+            locked_group_results=locked_group_results,
         )
         apply_group_result(group_tables[fixture["group"]], match, rng)
 
@@ -1057,6 +1099,7 @@ def append_batch_cups(
     groups: dict[str, list[str]],
     strengths: dict[str, float],
     params: ModelParams,
+    locked_group_results: LockedGroupResults | None = None,
 ) -> None:
     rng = np.random.default_rng(int(time.time_ns() % 2**32))
     historico = st.session_state.setdefault("historico_copas", [])
@@ -1064,7 +1107,7 @@ def append_batch_cups(
     timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
     for offset in range(amount):
-        result = simulate_cup_summary(groups, strengths, params, rng)
+        result = simulate_cup_summary(groups, strengths, params, rng, locked_group_results)
         historico.append(
             {
                 "edicao": start_index + offset,
@@ -1102,6 +1145,7 @@ def show_batch_cups_dialog(
     params: ModelParams,
     bandeiras: dict[str, str],
     amount: int = 22,
+    locked_group_results: LockedGroupResults | None = None,
 ) -> None:
     progress_bar = st.progress(0, text="Preparando simulações...")
     current_slot = st.empty()
@@ -1109,7 +1153,7 @@ def show_batch_cups_dialog(
     timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
     for index in range(amount):
-        result = simulate_cup_summary(groups, strengths, params, rng)
+        result = simulate_cup_summary(groups, strengths, params, rng, locked_group_results)
         edicao = append_cup_result(result, timestamp=timestamp)
         champion = result["campeao"]
         vice = result["vice"]
@@ -1235,6 +1279,14 @@ with col_ctrl3:
 with col_ctrl4:
     clear_history = st.button("Limpar histórico", width='stretch', key="live_clear_history")
 
+try:
+    base_df = load_force_dataframe()
+except Exception as error:
+    st.error(f"Erro ao carregar dados da simulação ao vivo: {error}")
+    st.stop()
+
+official_results = load_official_group_results(base_df)
+use_official_results = render_official_results_sidebar(official_results)
 params = render_param_sidebar()
 
 
@@ -1242,7 +1294,6 @@ try:
     # Mesma carga de dados e mesmo vetor de forca do simulador oficial: a base
     # enriquecida mais recente combinada com os pesos/elasticidade/offset OU o
     # vetor otimizado, conforme os widgets da barra lateral (build_combined).
-    base_df = load_force_dataframe()
     force_df, _ = build_combined(base_df, params)
 except Exception as error:
     st.error(f"Erro ao carregar dados da simulação ao vivo: {error}")
@@ -1252,11 +1303,18 @@ groups = build_groups(force_df)
 strengths = dict(zip(force_df["Seleção"], force_df["forca_com_offset"]))
 bandeiras_dict = dict(zip(force_df["Seleção"], force_df["Link_Bandeira"]))
 top_team = str(force_df.iloc[0]["Seleção"])
+locked_group_results = (
+    official_results.locked_group_results_by_name
+    if use_official_results and official_results.locked_match_count > 0
+    else None
+)
 
 st.session_state["live_model_subtitle"] = "Configure a velocidade e inicie a simulação."
 force_signature = (
     params.usar_vetor_otimizado,
     params.media_gols,
+    bool(locked_group_results),
+    official_results.locked_match_count if locked_group_results else 0,
     tuple((team, round(float(force), 8)) for team, force in sorted(strengths.items())),
 )
 
@@ -1281,7 +1339,14 @@ if start_new_cup:
     st.session_state["live_saved_result"] = False
 
 if simulate_22_cups:
-    show_batch_cups_dialog(groups, strengths, params, bandeiras_dict, amount=22)
+    show_batch_cups_dialog(
+        groups,
+        strengths,
+        params,
+        bandeiras_dict,
+        amount=22,
+        locked_group_results=locked_group_results,
+    )
 
 if clear_history:
     reset_live_page(groups, strengths)
@@ -1315,7 +1380,15 @@ render_history_panels(history_table_slot, history_chart_slot, bandeiras_dict)
 if st.session_state.get("live_running"):
     delay_value = DELAY_BY_SPEED[speed]
     if st.session_state["live_phase"] == "groups":
-        run_group_stage(params, strengths, bandeiras_dict, delay_value, slots, top_team)
+        run_group_stage(
+            params,
+            strengths,
+            bandeiras_dict,
+            delay_value,
+            slots,
+            top_team,
+            locked_group_results=locked_group_results,
+        )
     elif st.session_state["live_phase"] in NEXT_PHASE:
         run_knockout_stage(params, strengths, bandeiras_dict, delay_value, slots, top_team)
     elif st.session_state["live_phase"] == "champion":

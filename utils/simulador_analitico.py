@@ -53,6 +53,8 @@ DISPLAY_STAGE_BY_HISTORY = {
 }
 
 BRAZIL_KEY = "brazil"
+LockedGroupResult = tuple[int, int, int]
+LockedGroupResults = dict[tuple[str, str, str], LockedGroupResult]
 
 
 def _ordered_pair(team_a: str, team_b: str) -> tuple[str, str]:
@@ -89,12 +91,32 @@ def _find_opponent(current_round: list[dict], team_key: str) -> str | None:
     return None
 
 
+def _group_letter(value: object) -> str:
+    return str(value or "").replace("Grupo ", "").strip()
+
+
+def _group_match_result(
+    group_name: str,
+    team_a: str,
+    team_b: str,
+    rng: np.random.Generator,
+    match_simulator: BaseMatchSimulator,
+    locked_group_results: LockedGroupResults | None,
+) -> LockedGroupResult:
+    if locked_group_results:
+        locked = locked_group_results.get((_group_letter(group_name), team_a, team_b))
+        if locked is not None:
+            return locked
+    return match_simulator.simulate_match(team_a, team_b, rng, False)
+
+
 def simulate_one_cup_analytics(
     groups: dict[str, list[str]],
     strengths: dict[str, float],
     rng: np.random.Generator,
     match_simulator: BaseMatchSimulator,
     tracked_team: str = BRAZIL_KEY,
+    locked_group_results: LockedGroupResults | None = None,
 ) -> dict:
     history = {
         team_key: {stage: 0 for stage in SIM_STAGE_COLUMNS}
@@ -119,11 +141,13 @@ def simulate_one_cup_analytics(
         }
         for idx_a, team_a in enumerate(teams):
             for team_b in teams[idx_a + 1 :]:
-                goals_a, goals_b, winner = match_simulator.simulate_match(
-                    team_a,
-                    team_b,
-                    rng,
-                    False,
+                goals_a, goals_b, winner = _group_match_result(
+                    group_name=group_name,
+                    team_a=team_a,
+                    team_b=team_b,
+                    rng=rng,
+                    match_simulator=match_simulator,
+                    locked_group_results=locked_group_results,
                 )
                 table[team_a]["confrontos"][team_b] = (goals_a, goals_b)
                 table[team_b]["confrontos"][team_a] = (goals_b, goals_a)
@@ -228,6 +252,7 @@ def run_detailed_simulation(
     chunk_size: int = 10_000,
     progress_callback: Callable[[int, int], None] | None = None,
     tracked_team: str = BRAZIL_KEY,
+    locked_group_results: LockedGroupResults | None = None,
 ) -> dict:
     groups = dataframe.groupby("Grupo")["team_key"].apply(list).to_dict()
     team_keys = dataframe["team_key"].tolist()
@@ -264,8 +289,10 @@ def run_detailed_simulation(
         for _ in range(current_chunk):
             if "Aleatório" in tipo_chaveamento or "Aleatorio" in tipo_chaveamento:
                 groups_in_use = randomizar_grupos(groups, strengths)
+                locked_results_in_use = None
             else:
                 groups_in_use = groups
+                locked_results_in_use = locked_group_results
 
             result = simulate_one_cup_analytics(
                 groups=groups_in_use,
@@ -273,6 +300,7 @@ def run_detailed_simulation(
                 rng=rng,
                 match_simulator=match_simulator,
                 tracked_team=tracked_team,
+                locked_group_results=locked_results_in_use,
             )
             history = result["history"]
             champion = result["champion"]

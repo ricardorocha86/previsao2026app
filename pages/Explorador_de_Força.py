@@ -29,6 +29,11 @@ from utils.forca_core import (
     team_with_flag,
     TEAM_FLAG_EMOJI,
 )
+from utils.resultados_oficiais import (
+    LockedGroupResults,
+    load_official_group_results,
+    render_official_results_sidebar,
+)
 
 
 SIM_STAGE_COLUMNS = ["pos_1", "pos_2", "pos_3", "pos_4", "Top32", "Oitavas", "Quartas", "Semifinal", "Final", "Campeao"]
@@ -647,6 +652,8 @@ def run_complete_simulation_progressive(
     rho_dixon_coles: float,
     tipo_chaveamento: str = "Sorteio Oficial",
     chunk_size: int = 1000,
+    locked_group_results: LockedGroupResults | None = None,
+    locked_match_count: int = 0,
 ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
     st.markdown(
         """
@@ -686,6 +693,7 @@ div[data-testid="stDialog"] div[data-testid="stAlert"] p {
         f"""
 <div class="simulation-dialog-summary">
     Rodando <b>{_format_count(n_sims)}</b> copas com chaveamento <b>{tipo_chaveamento}</b>.
+    {"<br>Resultados oficiais travados: <b>" + str(locked_match_count) + "</b> jogo(s) da fase de grupos." if locked_group_results else ""}
 </div>
 """,
         unsafe_allow_html=True,
@@ -747,6 +755,7 @@ div[data-testid="stDialog"] div[data-testid="stAlert"] p {
             tipo_chaveamento=tipo_chaveamento,
             chunk_size=chunk_size,
             progress_callback=update_progress,
+            locked_group_results=locked_group_results,
         )
 
     render_dialog_status(
@@ -939,8 +948,10 @@ de chaveamento abaixo e rode a simulação.
     unsafe_allow_html=True,
 )
 
-params = render_param_sidebar()
 base_df = load_force_dataframe()
+official_results = load_official_group_results(base_df)
+use_official_results = render_official_results_sidebar(official_results)
+params = render_param_sidebar()
 combined_df, weight_sum = build_combined(base_df, params)
 media_gols = params.media_gols
 usar_dixon_coles = params.usar_dixon_coles
@@ -1033,11 +1044,12 @@ if selected_option == "Nenhuma (Simular em Tempo Real)":
             format_func=_fmt_copas,
             key="sim_n_sims_preset",
         )
-        tipo_chaveamento = st.pills(
-            "Chaveamento", ["Sorteio Oficial", "Sorteio Aleatório"], selection_mode="single", default="Sorteio Oficial", key="sim_tipo_chaveamento"
-        )
-        if tipo_chaveamento is None:
-            tipo_chaveamento = "Sorteio Oficial"
+        tipo_chaveamento = "Sorteio Oficial"
+        # tipo_chaveamento = st.pills(
+        #     "Chaveamento", ["Sorteio Oficial", "Sorteio Aleatório"], selection_mode="single", default="Sorteio Oficial", key="sim_tipo_chaveamento"
+        # )
+        # if tipo_chaveamento is None:
+        #     tipo_chaveamento = "Sorteio Oficial"
         # ETA estimado considerando ~1000 simulações por segundo
         eta_min = int(n_sims) / 1000 / 60
         eta_label = f"{eta_min:.1f}".replace(".", ",")
@@ -1073,6 +1085,12 @@ st.markdown("### Resultados da Simulação")
 
 if run_simulation:
     st.session_state.pop("_explorador_latest_sim_result", None)
+    locked_group_results = (
+        official_results.locked_group_results
+        if use_official_results and official_results.locked_match_count > 0
+        else None
+    )
+    locked_match_count = official_results.locked_match_count if locked_group_results else 0
     run_complete_simulation_progressive(
         dataframe=combined_df,
         media_gols=media_gols,
@@ -1081,6 +1099,8 @@ if run_simulation:
         rho_dixon_coles=rho_dixon_coles,
         tipo_chaveamento=tipo_chaveamento,
         chunk_size=1000,
+        locked_group_results=locked_group_results,
+        locked_match_count=locked_match_count,
     )
     sim_result = st.session_state.pop("_explorador_latest_sim_result", None)
     if sim_result is None:
@@ -1155,6 +1175,8 @@ if run_simulation:
             {"Parametro": "Rho Dixon-Coles", "Valor": rho_dixon_coles},
             {"Parametro": "Número de Copas", "Valor": int(n_sims)},
             {"Parametro": "Tipo de Simulação", "Valor": tipo_simulacao},
+            {"Parametro": "Resultados oficiais travados", "Valor": bool(locked_group_results)},
+            {"Parametro": "Jogos oficiais travados", "Valor": locked_match_count},
         ]
     )
     info_df = pd.DataFrame(info_rows)

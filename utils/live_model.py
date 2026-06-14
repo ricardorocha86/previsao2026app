@@ -10,6 +10,7 @@ from utils import config as app_config
 from utils.simulador_oficial import (
     build_official_round_of_32,
     dixon_coles_correction,
+    ordenar_grupo_oficial,
     parse_world_cup_score,
 )
 
@@ -164,24 +165,37 @@ def simulate_match(
     matrix = probabilities["matrix"]
     flat_index = int(rng.choice(matrix.size, p=matrix.ravel()))
     goals_a, goals_b = np.unravel_index(flat_index, matrix.shape)
+    goals_a, goals_b = int(goals_a), int(goals_b)
 
     winner = None
     penalty_winner = None
+    extra_time = False
     if goals_a > goals_b:
         winner = team_a
     elif goals_b > goals_a:
         winner = team_b
     elif knockout:
-        penalty_winner = team_a if rng.random() < probabilities["share_a"] else team_b
-        winner = penalty_winner
+        # Prorrogacao: 30% da media de gols original, identico ao simulador oficial
+        # (PoissonMatchSimulator). Persistindo o empate, decide nos penaltis pelo share.
+        extra_time = True
+        goals_a += int(rng.poisson(float(probabilities["lambda_a"]) * 0.3))
+        goals_b += int(rng.poisson(float(probabilities["lambda_b"]) * 0.3))
+        if goals_a > goals_b:
+            winner = team_a
+        elif goals_b > goals_a:
+            winner = team_b
+        else:
+            penalty_winner = team_a if rng.random() < probabilities["share_a"] else team_b
+            winner = penalty_winner
 
     return {
         "team_a": team_a,
         "team_b": team_b,
-        "goals_a": int(goals_a),
-        "goals_b": int(goals_b),
+        "goals_a": goals_a,
+        "goals_b": goals_b,
         "winner": winner,
         "penalty_winner": penalty_winner,
+        "extra_time": extra_time,
         "lambda_a": float(probabilities["lambda_a"]),
         "lambda_b": float(probabilities["lambda_b"]),
         "win_a": float(probabilities["win_a"]),
@@ -195,6 +209,7 @@ def new_group_table(groups: dict[str, list[str]], strengths: dict[str, float]) -
         group: {
             team: {
                 "team": team,
+                "team_key": team,
                 "group": group,
                 "played": 0,
                 "points": 0,
@@ -206,6 +221,7 @@ def new_group_table(groups: dict[str, list[str]], strengths: dict[str, float]) -
                 "goal_diff": 0,
                 "fair_play": 0.0,
                 "force": strengths.get(team, 0.0),
+                "confrontos": {},
             }
             for team in teams
         }
@@ -220,6 +236,9 @@ def apply_group_result(table: dict[str, dict], match: dict, rng: np.random.Gener
     goals_b = match["goals_b"]
     table[team_a]["played"] += 1
     table[team_b]["played"] += 1
+    # Confronto direto: necessario para o desempate oficial da FIFA (ordenar_grupo_oficial).
+    table[team_a]["confrontos"][team_b] = (goals_a, goals_b)
+    table[team_b]["confrontos"][team_a] = (goals_b, goals_a)
     table[team_a]["goals_for"] += goals_a
     table[team_a]["goals_against"] += goals_b
     table[team_b]["goals_for"] += goals_b
@@ -265,6 +284,26 @@ def group_stage_records(group_tables: dict[str, dict[str, dict]]) -> list[dict]:
             item = record.copy()
             item["group_position"] = position
             records.append(item)
+    return records
+
+
+def official_group_positions(
+    group_tables: dict[str, dict[str, dict]],
+    strengths: dict[str, float],
+    rng: np.random.Generator,
+) -> list[dict]:
+    """Define as posicoes finais de cada grupo com o criterio oficial da FIFA.
+
+    Usa ``ordenar_grupo_oficial`` (mesmo desempate do simulador oficial:
+    pontos -> confronto direto -> saldo -> gols -> fair play -> forca), para que a
+    Simulacao Ao Vivo classifique os grupos exatamente como o simulador oficial.
+    """
+    records: list[dict] = []
+    for group in sorted(group_tables):
+        ranking = ordenar_grupo_oficial(list(group_tables[group].values()), strengths, rng)
+        for position, record in enumerate(ranking, start=1):
+            record["group_position"] = position
+            records.append(record)
     return records
 
 

@@ -13,16 +13,18 @@ import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.data_loader import carregar_dados
 from utils.helpers import get_bandeira_url, inject_custom_css
-from utils.forca_core import ModelParams, build_optimized_force_table, render_param_sidebar
+from utils.forca_core import (
+    ModelParams,
+    build_combined,
+    load_force_dataframe,
+    render_param_sidebar,
+)
 from utils.live_model import (
-    DefaultModelParams,
     apply_group_result,
-    build_default_force_table,
     build_round_of_32,
-    group_stage_records,
     new_group_table,
+    official_group_positions,
     rank_group,
     simulate_match,
 )
@@ -97,7 +99,7 @@ def inject_live_css() -> None:
 
     .live-metrics {
         display: grid;
-        grid-template-columns: repeat(4, minmax(120px, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.55rem;
         margin-top: 0.85rem;
     }
@@ -122,6 +124,65 @@ def inject_live_css() -> None:
         font-weight: 900;
         line-height: 1.1;
         margin-top: 0.2rem;
+    }
+
+    .live-champion-value {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        min-width: 0;
+    }
+
+    .live-champion-value .flag {
+        width: 34px;
+        height: 22px;
+        flex: 0 0 auto;
+    }
+
+    .live-champion-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .st-key-live_start_new_cup button {
+        background: #1F9D2A !important;
+        border-color: #27B935 !important;
+        color: #FFFFFF !important;
+        font-weight: 800 !important;
+    }
+
+    .st-key-live_start_new_cup button:hover {
+        background: #27B935 !important;
+        border-color: #68E70F !important;
+        color: #FFFFFF !important;
+    }
+
+    .st-key-live_start_new_cup button p {
+        color: #FFFFFF !important;
+    }
+
+    .st-key-live_simulate_22_cups button {
+        background: #1F9D2A !important;
+        border-color: #27B935 !important;
+        color: #FFFFFF !important;
+        font-weight: 800 !important;
+        padding-left: 0.45rem !important;
+        padding-right: 0.45rem !important;
+    }
+
+    .st-key-live_simulate_22_cups button:hover {
+        background: #27B935 !important;
+        border-color: #68E70F !important;
+        color: #FFFFFF !important;
+    }
+
+    .st-key-live_simulate_22_cups button p {
+        color: #FFFFFF !important;
+        font-size: 0.84rem !important;
+        line-height: 1 !important;
+        white-space: nowrap !important;
     }
 
     .top-live-grid {
@@ -339,7 +400,7 @@ def flag(team: str, bandeiras: dict[str, str], css_class: str = "flag") -> str:
 
 
 def build_groups(force_df: pd.DataFrame) -> dict[str, list[str]]:
-    ordered = force_df.sort_values(["Grupo", "rank_forca"], ascending=[True, True])
+    ordered = force_df.sort_values(["Grupo", "ranking_forca"], ascending=[True, True])
     return ordered.groupby("Grupo")["Seleção"].apply(list).to_dict()
 
 
@@ -364,38 +425,48 @@ def phase_progress() -> tuple[int, int]:
     return 1, 1
 
 
-def render_hero(current_match: dict | None, total_matches: int, top_team: str) -> None:
+def render_hero(
+    current_match: dict | None,
+    total_matches: int,
+    top_team: str,
+    bandeiras: dict[str, str],
+) -> None:
     phase = st.session_state.get("live_phase", "groups")
     played, phase_total = phase_progress()
-    champion = st.session_state.get("live_campeao") or "-"
     latest = current_match
     title = "Simulação Ao Vivo"
-    subtitle = "Modelo padrão: força composta, média de gols 3.00 e Dixon-Coles ativo."
+    kicker = PHASE_LABELS.get(phase, phase)
+    first_metric_label = "Progresso da fase"
+    first_metric_value = f"{played}/{phase_total}"
+    subtitle = st.session_state.get(
+        "live_model_subtitle",
+        "Pronto para simular a Copa.",
+    )
     if latest:
         subtitle = f"Último jogo: {latest['team_a']} {latest['goals_a']} x {latest['goals_b']} {latest['team_b']}"
+    if phase == "champion":
+        champion = st.session_state.get("live_campeao") or "-"
+        kicker = "Copa encerrada"
+        first_metric_label = "Campeão"
+        first_metric_value = (
+            f'<div class="live-champion-value">{flag(champion, bandeiras)}'
+            f'<span class="live-champion-name">{esc(champion)}</span></div>'
+        )
 
     st.markdown(
         f"""
 <div class="live-hero">
-    <div class="live-kicker">{esc(PHASE_LABELS.get(phase, phase))}</div>
+    <div class="live-kicker">{esc(kicker)}</div>
     <div class="live-title">{esc(title)}</div>
     <p class="live-subtitle">{esc(subtitle)}</p>
     <div class="live-metrics">
         <div class="live-metric">
-            <div class="live-metric-label">Progresso da fase</div>
-            <div class="live-metric-value">{played}/{phase_total}</div>
+            <div class="live-metric-label">{esc(first_metric_label)}</div>
+            <div class="live-metric-value">{first_metric_value}</div>
         </div>
         <div class="live-metric">
             <div class="live-metric-label">Jogos simulados</div>
             <div class="live-metric-value">{total_matches}</div>
-        </div>
-        <div class="live-metric">
-            <div class="live-metric-label">Favorito do modelo</div>
-            <div class="live-metric-value">{esc(top_team)}</div>
-        </div>
-        <div class="live-metric">
-            <div class="live-metric-label">Campeão</div>
-            <div class="live-metric-value">{esc(champion)}</div>
         </div>
     </div>
 </div>
@@ -449,10 +520,21 @@ def render_current_match(match: dict | None, bandeiras: dict[str, str]) -> None:
 
 
 def render_group_cards(group_tables: dict[str, dict[str, dict]], bandeiras: dict[str, str]) -> None:
+    # Apos a fase de grupos, exibe na ordem oficial (com confronto direto) salva em
+    # live_group_final_order; durante a animacao, ordena pelo criterio simples.
+    final_order = st.session_state.get("live_group_final_order") or {}
     cards = []
     for group in sorted(group_tables):
+        if group in final_order:
+            ranked_records = [
+                group_tables[group][name]
+                for name in final_order[group]
+                if name in group_tables[group]
+            ]
+        else:
+            ranked_records = rank_group(group_tables[group])
         rows = []
-        for position, record in enumerate(rank_group(group_tables[group]), start=1):
+        for position, record in enumerate(ranked_records, start=1):
             klass = "qualified" if position <= 2 else ""
             rows.append(
                 f"""
@@ -558,7 +640,7 @@ def render_knockout(matches: list[dict], bandeiras: dict[str, str]) -> None:
 
 def build_champions_chart(campeoes: dict[str, int], bandeiras: dict[str, str]) -> go.Figure:
     """Gráfico de barras verticais com os campeões mais frequentes e a bandeira no eixo x."""
-    items = sorted(campeoes.items(), key=lambda kv: (-kv[1], kv[0]))[:12]
+    items = sorted(campeoes.items(), key=lambda kv: (-kv[1], kv[0]))[:15]
     teams = [team for team, _ in items]
     counts = [count for _, count in items]
     indices = list(range(len(teams)))
@@ -597,8 +679,8 @@ def build_champions_chart(campeoes: dict[str, int], bandeiras: dict[str, str]) -
 
     max_count = max(counts) if counts else 1
     fig.update_layout(
-        height=440,
-        margin=dict(l=10, r=10, t=30, b=80),
+        height=255,
+        margin=dict(l=10, r=10, t=5, b=68),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font_color="#C9D1C9",
@@ -619,54 +701,80 @@ def build_champions_chart(campeoes: dict[str, int], bandeiras: dict[str, str]) -
     return fig
 
 
-def render_history(bandeiras: dict[str, str]) -> None:
-    historico = st.session_state.get("historico_copas", [])
+def render_history_dataset(
+    historico: list[dict],
+    campeoes: dict[str, int],
+    bandeiras: dict[str, str],
+    height: int = 330,
+) -> None:
     if not historico:
         st.info("Nenhuma copa simulada ainda.")
         return
 
-    campeoes = {}
+    maior = max(campeoes.items(), key=lambda item: item[1])
+    st.caption(
+        f"{len(historico)} copas · {len(campeoes)} campeões únicos · "
+        f"maior campeão {maior[0]} ({maior[1]}x)"
+    )
+    df_hist = pd.DataFrame(
+        [
+            {
+                "#": copa["edicao"],
+                "Bandeira": get_bandeira_url(copa["campeao"], bandeiras),
+                "Campeão": copa["campeao"],
+                "Vice": copa["vice"],
+                "3º": copa.get("terceiro", "N/A"),
+                "Final": copa["final_placar"],
+                "Semifinalistas": ", ".join(copa.get("semifinalistas", [])),
+                "Quando": copa.get("timestamp", "N/A"),
+            }
+            for copa in reversed(historico)
+        ]
+    )
+    st.dataframe(
+        df_hist,
+        hide_index=True,
+        height=height,
+        width="stretch",
+        column_config={
+            "#": st.column_config.NumberColumn(width=45),
+            "Bandeira": st.column_config.ImageColumn(""),
+        },
+    )
+
+
+@st.dialog("Histórico das Copas Simuladas", width="large")
+def show_history_dialog(historico: list[dict], campeoes: dict[str, int], bandeiras: dict[str, str]) -> None:
+    render_history_dataset(historico, campeoes, bandeiras, height=520)
+
+
+def render_history_panels(table_slot, chart_slot, bandeiras: dict[str, str], key_suffix: str = "top") -> None:
+    """Histórico de copas em dois painéis.
+
+    ``table_slot`` (coluna 1, abaixo do hero) recebe a tabela de últimas copas
+    dentro de um dialog — assim não ocupa altura na tela de cara.
+    ``chart_slot`` (coluna 2) recebe o gráfico de barras dos campeões da história.
+    Ambos são slots (``st.empty``) reescritos quando uma nova copa termina.
+    """
+    historico = st.session_state.get("historico_copas", [])
+
+    campeoes: dict[str, int] = {}
     for copa in historico:
         campeoes[copa["campeao"]] = campeoes.get(copa["campeao"], 0) + 1
 
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Copas", len(historico))
-    col_b.metric("Campeões únicos", len(campeoes))
-    maior = max(campeoes.items(), key=lambda item: item[1])
-    col_c.metric("Maior campeão", f"{maior[0]} ({maior[1]}x)")
+    label_history = (
+        f"📜 Histórico — últimas copas ({len(historico)})" if historico else "📜 Histórico — últimas copas"
+    )
+    with table_slot.container():
+        if st.button(label_history, width="stretch", key=f"live_history_dialog_{key_suffix}"):
+            show_history_dialog(historico, campeoes, bandeiras)
 
-    col_results, col_chart = st.columns([1, 2])
-
-    with col_results:
-        st.markdown("##### Todos os resultados")
-        df_hist = pd.DataFrame(
-            [
-                {
-                    "#": copa["edicao"],
-                    "Bandeira": get_bandeira_url(copa["campeao"], bandeiras),
-                    "Campeão": copa["campeao"],
-                    "Vice": copa["vice"],
-                    "3º": copa.get("terceiro", "N/A"),
-                    "Final": copa["final_placar"],
-                    "Quando": copa["timestamp"],
-                }
-                for copa in reversed(historico)
-            ]
-        )
-        st.dataframe(
-            df_hist,
-            hide_index=True,
-            height=440,
-            width="stretch",
-            column_config={
-                "#": st.column_config.NumberColumn(width=50),
-                "Bandeira": st.column_config.ImageColumn(""),
-            },
-        )
-
-    with col_chart:
-        st.markdown("##### Top campeões")
-        st.plotly_chart(build_champions_chart(campeoes, bandeiras), width="stretch")
+    with chart_slot.container():
+        st.markdown("##### Campeões do Mundo da Simulação")
+        if not historico:
+            st.caption("O gráfico aparece após simular ao menos uma copa.")
+        else:
+            st.plotly_chart(build_champions_chart(campeoes, bandeiras), width="stretch")
 
 
 def initialize_new_cup(groups: dict[str, list[str]], strengths: dict[str, float]) -> None:
@@ -675,6 +783,7 @@ def initialize_new_cup(groups: dict[str, list[str]], strengths: dict[str, float]
     st.session_state["live_group_tables"] = new_group_table(groups, strengths)
     st.session_state["live_group_fixtures"] = build_group_fixtures(groups)
     st.session_state["live_group_index"] = 0
+    st.session_state["live_group_final_order"] = {}
     st.session_state["live_matches"] = []
     st.session_state["live_knockout_matches"] = []
     st.session_state["live_current_phase_matches"] = []
@@ -685,6 +794,30 @@ def initialize_new_cup(groups: dict[str, list[str]], strengths: dict[str, float]
     st.session_state["live_terceiro_disputa"] = []
     st.session_state["live_semifinalistas"] = []
     st.session_state["live_final_placar"] = None
+    st.session_state["live_champion_popup_done"] = False
+    st.session_state["live_seed"] = int(time.time_ns() % 2**32)
+
+
+def reset_live_page(groups: dict[str, list[str]], strengths: dict[str, float]) -> None:
+    st.session_state["historico_copas"] = []
+    st.session_state["live_running"] = False
+    st.session_state["live_phase"] = "groups"
+    st.session_state["live_group_tables"] = new_group_table(groups, strengths)
+    st.session_state["live_group_fixtures"] = build_group_fixtures(groups)
+    st.session_state["live_group_index"] = 0
+    st.session_state["live_group_final_order"] = {}
+    st.session_state["live_group_records"] = []
+    st.session_state["live_matches"] = []
+    st.session_state["live_knockout_matches"] = []
+    st.session_state["live_current_phase_matches"] = []
+    st.session_state["live_current_round"] = []
+    st.session_state["live_campeao"] = None
+    st.session_state["live_vice"] = None
+    st.session_state["live_terceiro"] = None
+    st.session_state["live_terceiro_disputa"] = []
+    st.session_state["live_semifinalistas"] = []
+    st.session_state["live_final_placar"] = None
+    st.session_state["live_saved_result"] = False
     st.session_state["live_champion_popup_done"] = False
     st.session_state["live_seed"] = int(time.time_ns() % 2**32)
 
@@ -714,7 +847,7 @@ def render_all(
     matches = st.session_state.get("live_matches", [])
     current_match = matches[-1] if matches else None
     with overview_slot.container():
-        render_hero(current_match, len(matches), top_team)
+        render_hero(current_match, len(matches), top_team, bandeiras)
     with current_slot.container():
         render_current_match(current_match, bandeiras)
     with groups_slot.container():
@@ -757,8 +890,15 @@ def run_group_stage(
         if delay > 0:
             time.sleep(delay)
 
-    records = group_stage_records(group_tables)
+    # Classificacao final pelo criterio oficial da FIFA (com confronto direto),
+    # identica ao simulador oficial.
+    records = official_group_positions(group_tables, strengths, rng)
     st.session_state["live_group_records"] = records
+    # Ordem final por grupo para a exibicao bater com a classificacao oficial.
+    final_order: dict[str, list[str]] = {}
+    for record in records:
+        final_order.setdefault(record["group"], []).append(record["team"])
+    st.session_state["live_group_final_order"] = final_order
     st.session_state["live_current_round"] = build_round_of_32(records, strengths)
     st.session_state["live_current_phase_matches"] = []
     st.session_state["live_phase"] = "round32"
@@ -849,6 +989,157 @@ def run_knockout_stage(
     st.rerun()
 
 
+def simulate_cup_summary(
+    groups: dict[str, list[str]],
+    strengths: dict[str, float],
+    params: ModelParams,
+    rng: np.random.Generator,
+) -> dict:
+    group_tables = new_group_table(groups, strengths)
+    for fixture in build_group_fixtures(groups):
+        match = simulate_match(
+            fixture["team_a"],
+            fixture["team_b"],
+            strengths,
+            rng,
+            params,
+            knockout=False,
+        )
+        apply_group_result(group_tables[fixture["group"]], match, rng)
+
+    records = official_group_positions(group_tables, strengths, rng)
+    current_round = build_round_of_32(records, strengths)
+    semifinalists: list[str] = []
+    third_place_contenders: list[dict] = []
+    terceiro = "N/A"
+    vice = "N/A"
+    final_score = "N/A"
+
+    for phase in ["round32", "round16", "quarters", "semis", "final"]:
+        winners = []
+        losers = []
+        if phase == "semis":
+            semifinalists = [record["team"] for record in current_round]
+
+        for slot_index in range(0, len(current_round), 2):
+            left = current_round[slot_index]
+            right = current_round[slot_index + 1]
+            match = simulate_match(left["team"], right["team"], strengths, rng, params, knockout=True)
+            winner_record = left if match["winner"] == left["team"] else right
+            loser_record = right if winner_record is left else left
+            winners.append(winner_record)
+            losers.append(loser_record)
+
+            if phase == "final":
+                suffix = " (pen)" if match.get("penalty_winner") else ""
+                final_score = f"{match['team_a']} {match['goals_a']} x {match['goals_b']} {match['team_b']}{suffix}"
+                vice = loser_record["team"]
+
+        if phase == "semis":
+            third_place_contenders = losers
+        current_round = winners
+        if phase == "semis" and len(third_place_contenders) >= 2:
+            left, right = third_place_contenders[0], third_place_contenders[1]
+            match = simulate_match(left["team"], right["team"], strengths, rng, params, knockout=True)
+            terceiro = match["winner"]
+
+    return {
+        "campeao": current_round[0]["team"],
+        "vice": vice,
+        "terceiro": terceiro,
+        "semifinalistas": semifinalists,
+        "final_placar": final_score,
+    }
+
+
+def append_batch_cups(
+    amount: int,
+    groups: dict[str, list[str]],
+    strengths: dict[str, float],
+    params: ModelParams,
+) -> None:
+    rng = np.random.default_rng(int(time.time_ns() % 2**32))
+    historico = st.session_state.setdefault("historico_copas", [])
+    start_index = len(historico) + 1
+    timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+    for offset in range(amount):
+        result = simulate_cup_summary(groups, strengths, params, rng)
+        historico.append(
+            {
+                "edicao": start_index + offset,
+                "campeao": result["campeao"],
+                "vice": result["vice"],
+                "terceiro": result["terceiro"],
+                "semifinalistas": result["semifinalistas"],
+                "final_placar": result["final_placar"],
+                "timestamp": timestamp,
+            }
+        )
+
+
+def append_cup_result(result: dict, timestamp: str | None = None) -> int:
+    historico = st.session_state.setdefault("historico_copas", [])
+    edicao = len(historico) + 1
+    historico.append(
+        {
+            "edicao": edicao,
+            "campeao": result["campeao"],
+            "vice": result["vice"],
+            "terceiro": result["terceiro"],
+            "semifinalistas": result["semifinalistas"],
+            "final_placar": result["final_placar"],
+            "timestamp": timestamp or datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        }
+    )
+    return edicao
+
+
+@st.dialog("Simulando 22 Copas", width="small")
+def show_batch_cups_dialog(
+    groups: dict[str, list[str]],
+    strengths: dict[str, float],
+    params: ModelParams,
+    bandeiras: dict[str, str],
+    amount: int = 22,
+) -> None:
+    progress_bar = st.progress(0, text="Preparando simulações...")
+    current_slot = st.empty()
+    rng = np.random.default_rng(int(time.time_ns() % 2**32))
+    timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+    for index in range(amount):
+        result = simulate_cup_summary(groups, strengths, params, rng)
+        edicao = append_cup_result(result, timestamp=timestamp)
+        champion = result["campeao"]
+        vice = result["vice"]
+        terceiro = result["terceiro"]
+        progress_bar.progress((index + 1) / amount, text=f"{index + 1}/{amount} copas simuladas")
+
+        current_slot.markdown(
+            f"""
+<div style="text-align:center; padding:1rem 0 0.65rem;">
+    <div style="color:#92a092; font-size:0.8rem; font-weight:800; text-transform:uppercase;">Copa #{edicao}</div>
+    <div style="margin:0.6rem 0;">{flag(champion, bandeiras, "current-flag")}</div>
+    <div style="color:#68E70F; font-size:2rem; line-height:1.1; font-weight:900;">{esc(champion)}</div>
+    <div style="color:#c9d1c9; font-size:0.9rem; margin-top:0.45rem;">Campeão simulado</div>
+    <div style="display:flex; justify-content:center; gap:0.5rem; flex-wrap:wrap; margin-top:0.85rem;">
+        <span style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.55rem; border:1px solid rgba(255,255,255,0.12); border-radius:999px; color:#c9d1c9;">
+            Vice: {flag(vice, bandeiras)}{esc(vice)}
+        </span>
+        <span style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.35rem 0.55rem; border:1px solid rgba(255,255,255,0.12); border-radius:999px; color:#c9d1c9;">
+            3º: {flag(terceiro, bandeiras)}{esc(terceiro)}
+        </span>
+    </div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        time.sleep(0.25)
+
+    st.success(f"{amount} copas adicionadas ao histórico.")
+
+
 @st.dialog("Fim da Copa 2026")
 def show_champion_dialog(bandeiras: dict[str, str]) -> None:
     champion = st.session_state.get("live_campeao", "-")
@@ -914,7 +1205,11 @@ inject_live_css()
 
 st.markdown("## Simulação Ao Vivo da Copa")
 
-col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3, vertical_alignment="bottom")
+live_is_running = (
+    st.session_state.get("live_running", False)
+    and st.session_state.get("live_phase") != "champion"
+)
+col_ctrl1, col_ctrl2, col_ctrl3, col_ctrl4 = st.columns([4.5, 6, 3, 2], vertical_alignment="bottom")
 with col_ctrl1:
     speed = st.pills(
         "Velocidade",
@@ -924,19 +1219,31 @@ with col_ctrl1:
         key="live_speed",
     )
 with col_ctrl2:
-    start_new_cup = st.button("Nova Copa", type="primary", width='stretch')
+    start_new_cup = st.button(
+        "Simular uma Copa do Mundo! 🏆",
+        width='stretch',
+        disabled=live_is_running,
+        key="live_start_new_cup",
+    )
 with col_ctrl3:
-    clear_history = st.button("Limpar histórico", width='stretch')
+    simulate_22_cups = st.button(
+        "Simular 22 Copas 🎲",
+        width='stretch',
+        disabled=live_is_running,
+        key="live_simulate_22_cups",
+    )
+with col_ctrl4:
+    clear_history = st.button("Limpar histórico", width='stretch', key="live_clear_history")
 
 params = render_param_sidebar()
 
 
 try:
-    raw_df = carregar_dados()
-    if params.usar_vetor_otimizado:
-        force_df, _ = build_optimized_force_table(raw_df)
-    else:
-        force_df = build_default_force_table(raw_df, params)
+    # Mesma carga de dados e mesmo vetor de forca do simulador oficial: a base
+    # enriquecida mais recente combinada com os pesos/elasticidade/offset OU o
+    # vetor otimizado, conforme os widgets da barra lateral (build_combined).
+    base_df = load_force_dataframe()
+    force_df, _ = build_combined(base_df, params)
 except Exception as error:
     st.error(f"Erro ao carregar dados da simulação ao vivo: {error}")
     st.stop()
@@ -945,6 +1252,8 @@ groups = build_groups(force_df)
 strengths = dict(zip(force_df["Seleção"], force_df["forca_com_offset"]))
 bandeiras_dict = dict(zip(force_df["Seleção"], force_df["Link_Bandeira"]))
 top_team = str(force_df.iloc[0]["Seleção"])
+
+st.session_state["live_model_subtitle"] = "Configure a velocidade e inicie a simulação."
 force_signature = (
     params.usar_vetor_otimizado,
     params.media_gols,
@@ -959,6 +1268,7 @@ if (
     st.session_state["live_group_tables"] = new_group_table(groups, strengths)
     st.session_state["live_group_fixtures"] = build_group_fixtures(groups)
     st.session_state["live_group_index"] = 0
+    st.session_state["live_group_final_order"] = {}
     st.session_state["live_matches"] = []
     st.session_state["live_knockout_matches"] = []
     st.session_state["live_current_phase_matches"] = []
@@ -970,11 +1280,23 @@ if start_new_cup:
     st.session_state["live_force_signature"] = force_signature
     st.session_state["live_saved_result"] = False
 
+if simulate_22_cups:
+    show_batch_cups_dialog(groups, strengths, params, bandeiras_dict, amount=22)
+
 if clear_history:
-    st.session_state["historico_copas"] = []
+    reset_live_page(groups, strengths)
+    st.session_state["live_force_signature"] = force_signature
     st.rerun()
 
-overview_slot = st.empty()
+# Topo em 2 colunas: coluna 1 = hero + histórico (em dialog, abaixo do hero);
+# coluna 2 = gráfico de barras dos campeões da história.
+top_hero_col, top_chart_col = st.columns([2, 3])
+with top_hero_col:
+    overview_slot = st.empty()
+    history_table_slot = st.empty()
+with top_chart_col:
+    history_chart_slot = st.empty()
+
 top_left_col, top_right_col = st.columns([1.35, 0.85])
 with top_left_col:
     current_slot = st.empty()
@@ -988,6 +1310,7 @@ groups_slot = st.empty()
 
 slots = (overview_slot, current_slot, groups_slot, side_slot, knockout_slot)
 render_all(*slots, bandeiras_dict, top_team)
+render_history_panels(history_table_slot, history_chart_slot, bandeiras_dict)
 
 if st.session_state.get("live_running"):
     delay_value = DELAY_BY_SPEED[speed]
@@ -997,7 +1320,5 @@ if st.session_state.get("live_running"):
         run_knockout_stage(params, strengths, bandeiras_dict, delay_value, slots, top_team)
     elif st.session_state["live_phase"] == "champion":
         finish_cup(bandeiras_dict)
-
-st.markdown("---")
-st.markdown("### Histórico")
-render_history(bandeiras_dict)
+        # Atualiza o histórico no topo assim que a copa termina (sem esperar novo rerun).
+        render_history_panels(history_table_slot, history_chart_slot, bandeiras_dict, key_suffix="after_finish")

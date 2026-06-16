@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Atualiza os placares dos jogos ENCERRADOS da Copa 2026 a partir de uma API
-esportiva estruturada (football-data.org), gravando o mesmo
-`resultados_jogos.json` nos dois lugares onde ele vive:
+Atualiza os placares dos jogos ENCERRADOS da Copa 2026 a partir da API pública
+de placar da ESPN (site.api.espn.com — JSON estruturado, SEM API key),
+gravando o mesmo `resultados_jogos.json` nos dois lugares onde ele vive:
 
   - Website/assets/resultados_jogos.json            (site React/Vite)
   - Simulacao-Aplicativo-Streamlit/assets/resultados_jogos.json  (app Streamlit)
@@ -18,27 +18,28 @@ Ideia central (por que isto é confiável):
     - erro de string exata (o site/bolão casa por "Seleção A|Seleção B|Data");
     - transcrição manual de placar (que foi o que gerou o Irã 0x1 errado).
 
-Uso (a partir da pasta Simulacao-Aplicativo-Streamlit):
+Uso (a partir da pasta Simulacao-Aplicativo-Streamlit) — não precisa de key:
 
-  # 1) Gere uma API key grátis em https://www.football-data.org/client/register
-  $env:FOOTBALL_DATA_API_KEY = "sua_key"
   & "C:\\Users\\Pichau\\anaconda3\\python.exe" extracao\\atualizar_resultados.py
 
   # Só simular (não grava nada):
   ... extracao\\atualizar_resultados.py --dry-run
 
-  # Testar a lógica offline com um JSON salvo da API (sem key):
+  # Testar a lógica offline com um JSON salvo da API (sem rede):
   ... extracao\\atualizar_resultados.py --from-file extracao\\exemplo_api.json --dry-run
 
   # Gravar e já commitar+empurrar nos dois repos (dispara deploy Vercel+Streamlit):
   ... extracao\\atualizar_resultados.py --git
+
+  # Limitar a janela de datas consultadas (padrão: 11/06/2026 -> hoje):
+  ... extracao\\atualizar_resultados.py --desde 2026-06-15 --ate 2026-06-16
 """
 import argparse
 import json
-import os
 import subprocess
-import sys
+import time
 import unicodedata
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -52,8 +53,10 @@ SAIDAS_PADRAO = [
     RAIZ_STREAMLIT / 'assets' / 'resultados_jogos.json',
 ]
 
-# --- API football-data.org -----------------------------------------------
-API_URL = 'https://api.football-data.org/v4/competitions/WC/matches'
+# --- API pública da ESPN (sem key) ---------------------------------------
+ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard'
+ESPN_HEADERS = {'User-Agent': 'Mozilla/5.0'}
+INICIO_COPA = date(2026, 6, 11)   # primeiro dia de jogos
 
 # --- Mapa de nomes: variantes em inglês/alias -> nome PT canônico ---------
 # As chaves são normalizadas (sem acento, minúsculas, só alfanumérico) na hora
@@ -161,37 +164,54 @@ def carregar_indice_previsoes(caminho):
     return indice
 
 
-# --- Busca dos jogos encerrados na API ------------------------------------
-def buscar_jogos_encerrados_api(api_key):
-    """Consulta a football-data.org e devolve jogos com status FINISHED."""
-    headers = {'X-Auth-Token': api_key}
-    r = requests.get(API_URL, headers=headers, timeout=30)
-    r.raise_for_status()
-    return _normalizar_resposta_api(r.json())
+# --- Busca dos jogos encerrados na ESPN (sem key) -------------------------
+def buscar_jogos_encerrados_api(desde=None, ate=None):
+    """
+    Consulta o scoreboard da ESPN dia a dia entre `desde` e `ate` (date) e
+    devolve os jogos encerrados. Sem API key. Faz dedup por id do evento (a
+    ESPN datas em UTC, então um jogo pode aparecer em dia adjacente).
+    """
+    desde = desde or INICIO_COPA
+    ate = ate or date.today()
+    eventos = {}
+    dia = desde
+    while dia <= ate:
+        r = requests.get(ESPN_URL, headers=ESPN_HEADERS,
+                         params={'dates': dia.strftime('%Y%m%d')}, timeout=30)
+        r.raise_for_status()
+        for ev in r.json().get('events', []):
+            eventos[ev.get('id')] = ev
+        dia += timedelta(days=1)
+        time.sleep(0.2)  # educado com a API pública
+    return _eventos_para_jogos(eventos.values())
 
 
 def buscar_jogos_encerrados_arquivo(caminho):
-    """Lê um JSON salvo da API (modo --from-file, para teste offline)."""
-    return _normalizar_resposta_api(json.loads(Path(caminho).read_text(encoding='utf-8')))
+    """Lê um JSON salvo da ESPN ({'events': [...]}) — teste offline, sem rede."""
+    payload = json.loads(Path(caminho).read_text(encoding='utf-8'))
+    return _eventos_para_jogos(payload.get('events', []))
 
 
-def _normalizar_resposta_api(payload):
+def _eventos_para_jogos(eventos):
     """
-    Extrai dos `matches` da football-data.org só os encerrados, no formato:
+    Converte eventos do scoreboard da ESPN nos encerrados, no formato:
         {'home', 'away', 'home_score', 'away_score'}  (nomes em inglês)
+    Só entram os com status.type.completed == True.
     """
     encerrados = []
-    for m in payload.get('matches', []):
-        if m.get('status') != 'FINISHED':
+    for ev in eventos:
+        comp = (ev.get('competitions') or [{}])[0]
+        if not (comp.get('status', {}).get('type', {}) or {}).get('completed'):
             continue
-        full = (m.get('score') or {}).get('fullTime') or {}
-        if full.get('home') is None or full.get('away') is None:
+        lados = {c.get('homeAway'): c for c in comp.get('competitors', [])}
+        casa, fora = lados.get('home'), lados.get('away')
+        if not casa or not fora or casa.get('score') is None or fora.get('score') is None:
             continue
         encerrados.append({
-            'home': (m.get('homeTeam') or {}).get('name'),
-            'away': (m.get('awayTeam') or {}).get('name'),
-            'home_score': int(full['home']),
-            'away_score': int(full['away']),
+            'home': (casa.get('team') or {}).get('displayName'),
+            'away': (fora.get('team') or {}).get('displayName'),
+            'home_score': int(casa['score']),
+            'away_score': int(fora['score']),
         })
     return encerrados
 
@@ -299,10 +319,12 @@ def commit_e_push(caminho_arquivo, mensagem):
 def main():
     parser = argparse.ArgumentParser(
         description='Atualiza resultados_jogos.json (jogos encerrados da Copa 2026).')
-    parser.add_argument('--api-key', default=os.environ.get('FOOTBALL_DATA_API_KEY'),
-                        help='API key da football-data.org (ou env FOOTBALL_DATA_API_KEY).')
     parser.add_argument('--from-file', default=None,
-                        help='Lê um JSON salvo da API em vez de chamar a rede (teste offline).')
+                        help='Lê um JSON salvo da ESPN em vez de chamar a rede (teste offline).')
+    parser.add_argument('--desde', default=None,
+                        help='Data inicial AAAA-MM-DD a consultar (padrão: 2026-06-11).')
+    parser.add_argument('--ate', default=None,
+                        help='Data final AAAA-MM-DD a consultar (padrão: hoje).')
     parser.add_argument('--previsoes', default=str(PREVISOES_PADRAO),
                         help='Caminho do previsoes_jogos.json (fonte de verdade do casamento).')
     parser.add_argument('--saidas', nargs='*', default=[str(p) for p in SAIDAS_PADRAO],
@@ -313,16 +335,15 @@ def main():
                         help='Após gravar, faz commit + push nos repos (dispara deploys).')
     args = parser.parse_args()
 
-    # 1) Jogos encerrados (API ou arquivo)
+    # 1) Jogos encerrados (ESPN ou arquivo)
     if args.from_file:
         jogos_api = buscar_jogos_encerrados_arquivo(args.from_file)
         print(f'{len(jogos_api)} jogos encerrados lidos de {args.from_file}.')
     else:
-        if not args.api_key:
-            parser.error('Sem API key. Use --api-key, defina FOOTBALL_DATA_API_KEY, '
-                         'ou rode com --from-file para teste offline.')
-        jogos_api = buscar_jogos_encerrados_api(args.api_key)
-        print(f'{len(jogos_api)} jogos encerrados retornados pela API.')
+        desde = datetime.strptime(args.desde, '%Y-%m-%d').date() if args.desde else None
+        ate = datetime.strptime(args.ate, '%Y-%m-%d').date() if args.ate else None
+        jogos_api = buscar_jogos_encerrados_api(desde=desde, ate=ate)
+        print(f'{len(jogos_api)} jogos encerrados retornados pela ESPN.')
 
     # 2) Casa com as previsões (fonte de verdade de data + nomes)
     indice = carregar_indice_previsoes(args.previsoes)

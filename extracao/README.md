@@ -30,7 +30,7 @@ do Anaconda:
 | `extrair_mercados_predicao.py` | Kalshi + Polymarket (APIs públicas) | `mercados_predicao_<data>.xlsx` |
 | `extrair_valor_mercado.py` | Transfermarkt (`statistik/weltrangliste`) | `valor_mercado_selecoes_<data>.xlsx` |
 | `extrair_oddschecker.py` | Oddschecker (HTML salvo do navegador) | `oddschecker_tabela_com_probs_<data>.xlsx` |
-| `atualizar_resultados.py` | football-data.org (API `competitions/WC/matches`) | `resultados_jogos.json` (nos 2 repos: site + app) |
+| `atualizar_resultados.py` | ESPN (API pública de placar, **sem key**) | `resultados_jogos.json` (nos 2 repos: site + app) |
 | `util_rede.py` | — | contorno de DNS compartilhado |
 
 ### `atualizar_resultados.py` — placares dos jogos encerrados
@@ -38,19 +38,23 @@ do Anaconda:
 Atualiza o `resultados_jogos.json` (jogos da Copa já encerrados) nos dois lugares
 onde ele vive: `Website/assets/` e `Simulacao-Aplicativo-Streamlit/assets/`.
 
-A API só fornece o **placar**. A **data** e os **nomes exatos** das seleções vêm
+Fonte: `site.api.espn.com/.../soccer/fifa.world/scoreboard?dates=AAAAMMDD` — JSON
+estruturado, **sem API key**. O script varre dia a dia (padrão 11/06 → hoje) e
+pega só os eventos com `status.type.completed == true` (dedup por id, pois a ESPN
+data em UTC e um jogo pode aparecer no dia adjacente).
+
+A ESPN só fornece o **placar**. A **data** e os **nomes exatos** das seleções vêm
 sempre do `previsoes_jogos.json` (fonte de verdade): cada jogo encerrado é casado
 a uma previsão pelo par de seleções e copiamos `Data`/`Seleção A`/`Seleção B`
 exatos, só preenchendo o placar. Isso elimina erro de fuso, de string e de
-transcrição manual. Só jogos `FINISHED` entram; parciais são ignorados.
+transcrição manual. Só jogos encerrados entram; parciais são ignorados.
 
 ```powershell
-# 1) API key grátis em https://www.football-data.org/client/register
-$env:FOOTBALL_DATA_API_KEY = "sua_key"
-# 2) Atualiza os dois arquivos
+# Atualiza os dois arquivos (sem key):
 & "C:\Users\Pichau\anaconda3\python.exe" extracao\atualizar_resultados.py
 # Variantes: --dry-run (não grava) | --git (commit+push -> deploy) |
-#            --from-file extracao\exemplo_api.json (teste offline, sem key)
+#            --desde 2026-06-15 --ate 2026-06-16 (janela de datas) |
+#            --from-file extracao\exemplo_api.json (teste offline, sem rede)
 ```
 
 ## Notas importantes

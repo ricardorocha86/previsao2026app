@@ -1,21 +1,723 @@
 {
-  "matches": [
-    {"status": "FINISHED", "utcDate": "2026-06-11T19:00:00Z", "homeTeam": {"name": "Mexico"}, "awayTeam": {"name": "South Africa"}, "score": {"fullTime": {"home": 2, "away": 0}}},
-    {"status": "FINISHED", "utcDate": "2026-06-11T22:00:00Z", "homeTeam": {"name": "Korea Republic"}, "awayTeam": {"name": "Czechia"}, "score": {"fullTime": {"home": 2, "away": 1}}},
-    {"status": "FINISHED", "utcDate": "2026-06-12T19:00:00Z", "homeTeam": {"name": "Canada"}, "awayTeam": {"name": "Bosnia and Herzegovina"}, "score": {"fullTime": {"home": 1, "away": 1}}},
-    {"status": "FINISHED", "utcDate": "2026-06-12T22:00:00Z", "homeTeam": {"name": "United States"}, "awayTeam": {"name": "Paraguay"}, "score": {"fullTime": {"home": 4, "away": 1}}},
-    {"status": "FINISHED", "utcDate": "2026-06-13T16:00:00Z", "homeTeam": {"name": "Switzerland"}, "awayTeam": {"name": "Qatar"}, "score": {"fullTime": {"home": 1, "away": 1}}},
-    {"status": "FINISHED", "utcDate": "2026-06-13T19:00:00Z", "homeTeam": {"name": "Brazil"}, "awayTeam": {"name": "Morocco"}, "score": {"fullTime": {"home": 1, "away": 1}}},
-    {"status": "FINISHED", "utcDate": "2026-06-13T22:00:00Z", "homeTeam": {"name": "Scotland"}, "awayTeam": {"name": "Haiti"}, "score": {"fullTime": {"home": 1, "away": 0}}},
-    {"status": "FINISHED", "utcDate": "2026-06-14T13:00:00Z", "homeTeam": {"name": "Germany"}, "awayTeam": {"name": "Curacao"}, "score": {"fullTime": {"home": 7, "away": 1}}},
-    {"status": "FINISHED", "utcDate": "2026-06-13T13:00:00Z", "homeTeam": {"name": "Australia"}, "awayTeam": {"name": "Turkey"}, "score": {"fullTime": {"home": 2, "away": 0}}},
-    {"status": "FINISHED", "utcDate": "2026-06-14T16:00:00Z", "homeTeam": {"name": "Netherlands"}, "awayTeam": {"name": "Japan"}, "score": {"fullTime": {"home": 2, "away": 2}}},
-    {"status": "FINISHED", "utcDate": "2026-06-14T19:00:00Z", "homeTeam": {"name": "Ivory Coast"}, "awayTeam": {"name": "Ecuador"}, "score": {"fullTime": {"home": 1, "away": 0}}},
-    {"status": "FINISHED", "utcDate": "2026-06-14T22:00:00Z", "homeTeam": {"name": "Sweden"}, "awayTeam": {"name": "Tunisia"}, "score": {"fullTime": {"home": 5, "away": 1}}},
-    {"status": "FINISHED", "utcDate": "2026-06-15T13:00:00Z", "homeTeam": {"name": "Spain"}, "awayTeam": {"name": "Cape Verde"}, "score": {"fullTime": {"home": 0, "away": 0}}},
-    {"status": "FINISHED", "utcDate": "2026-06-15T16:00:00Z", "homeTeam": {"name": "Uruguay"}, "awayTeam": {"name": "Saudi Arabia"}, "score": {"fullTime": {"home": 1, "away": 1}}},
-    {"status": "FINISHED", "utcDate": "2026-06-15T19:00:00Z", "homeTeam": {"name": "Belgium"}, "awayTeam": {"name": "Egypt"}, "score": {"fullTime": {"home": 1, "away": 1}}},
-    {"status": "FINISHED", "utcDate": "2026-06-15T22:00:00Z", "homeTeam": {"name": "Iran"}, "awayTeam": {"name": "New Zealand"}, "score": {"fullTime": {"home": 2, "away": 2}}},
-    {"status": "TIMED", "utcDate": "2026-06-16T19:00:00Z", "homeTeam": {"name": "France"}, "awayTeam": {"name": "Senegal"}, "score": {"fullTime": {"home": null, "away": null}}}
-  ]
+ "events": [
+  {
+   "id": "760415",
+   "date": "2026-06-11T19:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+8'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "2",
+       "team": {
+        "displayName": "Mexico"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "displayName": "South Africa"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760414",
+   "date": "2026-06-12T02:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+7'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "2",
+       "team": {
+        "displayName": "South Korea"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "1",
+       "team": {
+        "displayName": "Czechia"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760416",
+   "date": "2026-06-12T19:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+7'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "1",
+       "team": {
+        "displayName": "Canada"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "1",
+       "team": {
+        "displayName": "Bosnia-Herzegovina"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760417",
+   "date": "2026-06-13T01:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+9'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "4",
+       "team": {
+        "displayName": "United States"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "1",
+       "team": {
+        "displayName": "Paraguay"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760420",
+   "date": "2026-06-13T19:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+7'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "1",
+       "team": {
+        "displayName": "Qatar"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "1",
+       "team": {
+        "displayName": "Switzerland"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760419",
+   "date": "2026-06-13T22:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+25'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "1",
+       "team": {
+        "displayName": "Brazil"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "1",
+       "team": {
+        "displayName": "Morocco"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760418",
+   "date": "2026-06-14T01:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+8'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "displayName": "Haiti"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "1",
+       "team": {
+        "displayName": "Scotland"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760421",
+   "date": "2026-06-14T04:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+6'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "2",
+       "team": {
+        "displayName": "Australia"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "displayName": "Türkiye"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760422",
+   "date": "2026-06-14T17:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+6'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "7",
+       "team": {
+        "displayName": "Germany"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "1",
+       "team": {
+        "displayName": "Curaçao"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760425",
+   "date": "2026-06-14T20:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+6'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "2",
+       "team": {
+        "displayName": "Netherlands"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "2",
+       "team": {
+        "displayName": "Japan"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760423",
+   "date": "2026-06-14T23:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+8'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "1",
+       "team": {
+        "displayName": "Ivory Coast"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "displayName": "Ecuador"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760424",
+   "date": "2026-06-15T02:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+6'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "5",
+       "team": {
+        "displayName": "Sweden"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "1",
+       "team": {
+        "displayName": "Tunisia"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760428",
+   "date": "2026-06-15T16:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+5'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "displayName": "Spain"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "displayName": "Cape Verde"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760426",
+   "date": "2026-06-15T19:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+5'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "1",
+       "team": {
+        "displayName": "Belgium"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "1",
+       "team": {
+        "displayName": "Egypt"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760429",
+   "date": "2026-06-15T22:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+8'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "1",
+       "team": {
+        "displayName": "Saudi Arabia"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "1",
+       "team": {
+        "displayName": "Uruguay"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760427",
+   "date": "2026-06-16T01:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+5'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "2",
+       "team": {
+        "displayName": "Iran"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "2",
+       "team": {
+        "displayName": "New Zealand"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760432",
+   "date": "2026-06-16T19:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0'",
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Tue, June 16th at 3:00 PM EDT",
+       "shortDetail": "Scheduled"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "displayName": "France"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "displayName": "Senegal"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760430",
+   "date": "2026-06-16T22:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0'",
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Tue, June 16th at 6:00 PM EDT",
+       "shortDetail": "Scheduled"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "displayName": "Iraq"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "displayName": "Norway"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "760433",
+   "date": "2026-06-17T01:00Z",
+   "competitions": [
+    {
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0'",
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Tue, June 16th at 9:00 PM EDT",
+       "shortDetail": "Scheduled"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "displayName": "Argentina"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "displayName": "Algeria"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
 }

@@ -166,5 +166,13 @@
     "Placar A": 1,
     "Placar B": 1,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Inglaterra",
+    "Seleção B": "Croácia",
+    "Data": "Quarta-feira, 17 de junho de 2026",
+    "Placar A": 4,
+    "Placar B": 2,
+    "Status": "encerrado"
   }
 ]

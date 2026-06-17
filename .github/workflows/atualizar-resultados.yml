@@ -2,8 +2,9 @@ name: Atualizar resultados da Copa
 
 on:
   schedule:
-    # UTC. 5/11/17/23h UTC ≈ 02h/08h/14h/20h de Brasília.
-    - cron: '0 5,11,17,23 * * *'
+    # UTC (Brasília = UTC-3, sem horário de verão).
+    # BRT 00:15/03:15/15:15/18:15/21:15/22:15 -> UTC 03:15/06:15/18:15/21:15/00:15/01:15.
+    - cron: '15 0,1,3,6,18,21 * * *'
   workflow_dispatch:   # botão "Run workflow" na aba Actions
 
 permissions:

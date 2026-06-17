@@ -142,5 +142,29 @@
     "Placar A": 4,
     "Placar B": 1,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Iraque",
+    "Seleção B": "Noruega",
+    "Data": "Terça-feira, 16 de junho de 2026",
+    "Placar A": 1,
+    "Placar B": 4,
+    "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Argentina",
+    "Seleção B": "Argélia",
+    "Data": "Terça-feira, 16 de junho de 2026",
+    "Placar A": 3,
+    "Placar B": 0,
+    "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Áustria",
+    "Seleção B": "Jordânia",
+    "Data": "Terça-feira, 16 de junho de 2026",
+    "Placar A": 3,
+    "Placar B": 1,
+    "Status": "encerrado"
   }
 ]

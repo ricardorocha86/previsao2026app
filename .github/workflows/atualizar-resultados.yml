@@ -1,0 +1,41 @@
+name: Atualizar resultados da Copa
+
+on:
+  schedule:
+    # UTC. 5/11/17/23h UTC ≈ 02h/08h/14h/20h de Brasília.
+    - cron: '0 5,11,17,23 * * *'
+  workflow_dispatch:   # botão "Run workflow" na aba Actions
+
+permissions:
+  contents: write
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instala dependências
+        run: pip install requests
+
+      - name: Atualiza resultados_jogos.json
+        run: >
+          python extracao/atualizar_resultados.py
+          --saidas assets/resultados_jogos.json
+          --previsoes assets/previsoes_jogos.json
+
+      - name: Commit + push (só se mudou)
+        run: |
+          if [[ -n "$(git status --porcelain assets/resultados_jogos.json)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add assets/resultados_jogos.json
+            git commit -m "Atualiza resultados da Copa (automático)"
+            git push
+          else
+            echo "Nada mudou — nenhum jogo novo encerrado."
+          fi

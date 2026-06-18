@@ -6,6 +6,7 @@ import sys
 from io import BytesIO
 import json
 from datetime import datetime as _dt
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -952,30 +953,34 @@ de chaveamento abaixo e rode a simulação.
     unsafe_allow_html=True,
 )
 
-base_df = load_force_dataframe()
-official_results = load_official_group_results(base_df)
-use_official_results = render_official_results_sidebar(official_results)
-params = render_param_sidebar()
-combined_df, weight_sum = build_combined(base_df, params)
-media_gols = params.media_gols
-usar_dixon_coles = params.usar_dixon_coles
-rho_dixon_coles = params.rho_dixon_coles
+def format_official_simulation_name(filename: str) -> str:
+    if filename == "Nenhuma (Simular em Tempo Real)":
+        return filename
 
-# --- Sidebar Loader Logic ---
+    label = Path(filename).stem
+    label = label.removeprefix("Simulação Oficial").strip()
+
+    date_match = re.search(r"(\d{2})\.(\d{2})\.(\d{4})$", label)
+    if date_match:
+        day, month, year = date_match.groups()
+        label = label[:date_match.start()].strip(" -–—")
+        return f"{label} — {day}/{month}/{year}"
+
+    return label
+
+
+# --- Simulação oficial: primeiro widget da barra lateral ---
+base_df = load_force_dataframe()
 resultados_dir = BASE_DIR / "resultados"
 os.makedirs(resultados_dir, exist_ok=True)
-official_simulation_files = [
-    "Simulação Oficial Inicio da Copa 11.06.2026.xlsx",
-    "Simulação Oficial Pré-Convocação 11.05.2026.xlsx",
-]
-saved_files_sorted = [
-    filename
-    for filename in official_simulation_files
-    if (resultados_dir / filename).exists()
-]
+official_simulation_paths = sorted(
+    resultados_dir.glob("Simulação Oficial*.xlsx"),
+    key=lambda path: (path.stat().st_mtime, path.name.casefold()),
+    reverse=True,
+)
+saved_files_sorted = [path.name for path in official_simulation_paths]
 radio_options = ["Nenhuma (Simular em Tempo Real)"] + saved_files_sorted
 
-st.sidebar.markdown("---")
 st.sidebar.markdown("### 📂 Simulação Oficial")
 
 # Determine default index
@@ -988,8 +993,19 @@ selected_option = st.sidebar.radio(
     "Carregar resultados pré-calculados:",
     options=radio_options,
     index=default_idx,
-    key="sidebar_simulation_radio"
+    key="sidebar_simulation_radio",
+    format_func=format_official_simulation_name,
 )
+
+# Os demais controles vêm depois da escolha da simulação oficial.
+st.sidebar.markdown("---")
+official_results = load_official_group_results(base_df)
+use_official_results = render_official_results_sidebar(official_results)
+params = render_param_sidebar()
+combined_df, weight_sum = build_combined(base_df, params)
+media_gols = params.media_gols
+usar_dixon_coles = params.usar_dixon_coles
+rho_dixon_coles = params.rho_dixon_coles
 
 if selected_option != "Nenhuma (Simular em Tempo Real)":
     if st.session_state.get("explorador_loaded_filename") != selected_option:

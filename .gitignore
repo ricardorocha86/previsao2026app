@@ -12,6 +12,7 @@ temp.xlsx
 ~$*.xlsx
 resultados/*
 !resultados/simulacao_previsao_esportiva_(pre-convocacao).xlsx
+!resultados/Simulação Oficial*.xlsx
 *.log
 
 # Claude Code

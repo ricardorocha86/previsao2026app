@@ -12,7 +12,7 @@ def _achar_arquivo_mercado():
 
     Prioridade:
     1. Tabela mestra mais recente (Kalshi + Polymarket + Oddschecker),
-       usando a coluna Media_3_fontes.
+       usando a coluna Media_3_ajustada (fallback: Media_3_fontes).
     2. mercados_predicao_*.xlsx mais recente (Kalshi + Polymarket).
     3. Oddschecker antigo.
     """
@@ -112,7 +112,9 @@ def load_market_target(path=None):
     df = pd.read_excel(path)
 
     col_team = "Selecao" if "Selecao" in df.columns else df.columns[0]
-    if "Media_3_fontes" in df.columns:
+    if "Media_3_ajustada" in df.columns:
+        col_prob = "Media_3_ajustada"
+    elif "Media_3_fontes" in df.columns:
         col_prob = "Media_3_fontes"
     elif "prob_implicita_media_normalizada" in df.columns:
         col_prob = "prob_implicita_media_normalizada"

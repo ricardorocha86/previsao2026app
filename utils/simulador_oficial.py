@@ -264,18 +264,30 @@ def ordenar_grupo_oficial(tabela_grupo, strengths, rng):
         ), reverse=True))
     return resultado
 
-def simulate_one_cup_oficial(groups, strengths, rng, match_simulator: BaseMatchSimulator):
-    """Simula uma Copa completa seguindo as regras de 2026 (48 times)."""
+def simulate_one_cup_oficial(groups, strengths, rng, match_simulator: BaseMatchSimulator,
+                             locked_group_results=None):
+    """Simula uma Copa completa seguindo as regras de 2026 (48 times).
+
+    Se ``locked_group_results`` for fornecido (dict
+    ``{(grupo, time_a, time_b): (gols_a, gols_b, vencedor)}``, no formato de
+    ``utils.resultados_oficiais.load_official_group_results``), os jogos de
+    grupo já encerrados usam o placar real em vez de simular.
+    """
     SIM_STAGE_COLUMNS = ["pos_1", "pos_2", "pos_3", "pos_4", "Top32", "Oitavas", "Quartas", "Semifinal", "Final", "Campeao"]
     history = {tk: {s: 0 for s in SIM_STAGE_COLUMNS} for teams in groups.values() for tk in teams}
 
     # Fase de Grupos
     records = []
     for g_name, teams in sorted(groups.items()):
+        g_letter = str(g_name).replace("Grupo ", "").strip()
         table = {tk: {"team_key": tk, "group": g_name, "points": 0, "goal_diff": 0, "goals_for": 0, "fair_play": 0, "confrontos": {}} for tk in teams}
         for i, t_a in enumerate(teams):
             for t_b in teams[i+1:]:
-                ga, gb, win = match_simulator.simulate_match(t_a, t_b, rng, False)
+                travado = locked_group_results.get((g_letter, t_a, t_b)) if locked_group_results else None
+                if travado is not None:
+                    ga, gb, win = travado
+                else:
+                    ga, gb, win = match_simulator.simulate_match(t_a, t_b, rng, False)
                 table[t_a]["confrontos"][t_b], table[t_b]["confrontos"][t_a] = (ga, gb), (gb, ga)
                 table[t_a]["goal_diff"] += ga - gb
                 table[t_b]["goal_diff"] += gb - ga

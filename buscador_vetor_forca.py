@@ -107,16 +107,18 @@ def build_match_cache(team_keys, strengths, media_gols, usar_dc, rho):
     return cache
 
 
-def simulate_and_count_champions(groups, strengths, match_cache, n_sims, rng=None):
+def simulate_and_count_champions(groups, strengths, match_cache, n_sims, rng=None,
+                                 locked_group_results=None):
     """Simula n_sims copas e retorna a contagem de títulos por seleção."""
     if rng is None:
         rng = np.random.default_rng()
     match_simulator = PoissonMatchSimulator(match_cache=match_cache, strengths=strengths)
-    
+
     champion_counts = {team_key: 0 for team_key in strengths}
-    
+
     for _ in range(n_sims):
-        history = simulate_one_cup_oficial(groups, strengths, rng, match_simulator)
+        history = simulate_one_cup_oficial(groups, strengths, rng, match_simulator,
+                                           locked_group_results=locked_group_results)
         for team_key, stages in history.items():
             if stages.get("Campeao", 0) == 1:
                 champion_counts[team_key] += 1
@@ -201,31 +203,58 @@ def load_data(reference_path=None):
 # ==========================================
 # ALGORITMO PRINCIPAL: COORDINATE DESCENT
 # ==========================================
-def buscar_vetor_forca(reference_path=None):
+def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultados=False,
+                       usar_crn=False, alpha_ini=None, alpha_fim=None,
+                       tol_kl=None, tol_mae=None):
+    alpha_ini = ALPHA_INICIAL if alpha_ini is None else alpha_ini
+    alpha_fim = ALPHA_FINAL if alpha_fim is None else alpha_fim
+    tol_kl = TOLERANCIA_KL if tol_kl is None else tol_kl
+    tol_mae = TOLERANCIA_MAE if tol_mae is None else tol_mae
+
     print("=" * 65)
     print("🎯 ESTÁGIO 1: Buscando Vetor de Força Ótimo")
     print(f"   Simulações por iteração: {N_SIMS_POR_ITERACAO:,}")
     print(f"   Máximo de iterações:     {MAX_ITERACOES}")
-    print(f"   Alpha: {ALPHA_INICIAL:.2f} → {ALPHA_FINAL:.2f}")
-    print(f"   Tolerância KL:           {TOLERANCIA_KL}")
+    print(f"   Alpha: {alpha_ini:.2f} → {alpha_fim:.2f}")
+    print(f"   Tolerância KL/MAE:       {tol_kl} / {tol_mae}")
+    print(f"   CRN (semente fixa):      {usar_crn}")
     print("   Offset:                  0.00 (vetor puro, sem soma)")
     print("=" * 65)
-    
+
     data = load_data(reference_path)
     groups = data["groups"]
     team_keys = data["team_keys"]
     market_probs = data["market_probs"]
     print(f"   Referencia:              {data['reference_path']}")
-    
+
+    # Resultados oficiais já encerrados: trava os jogos de grupo na simulação,
+    # exatamente como o app (página Simulação) faz ao reproduzir o mercado.
+    locked_group_results = None
+    n_travados = 0
+    if travar_resultados:
+        from utils.resultados_oficiais import load_official_group_results
+        oficiais = load_official_group_results(data["df"])
+        locked_group_results = oficiais.locked_group_results
+        n_travados = oficiais.locked_match_count
+        print(f"   Resultados travados:     {n_travados} jogo(s) de grupo")
+        if oficiais.unmatched_rows:
+            print(f"   AVISO — linhas nao casadas: {oficiais.unmatched_rows}")
+
     # Vetor de probabilidades de mercado (ordenado por team_key)
     p_market = np.array([market_probs[tk] for tk in team_keys])
-    
+
     # -------------------------------------------------------
-    # INICIALIZAÇÃO: forças proporcionais ao mercado
-    # Usar raiz quadrada para não ser tão extremo no início
-    # (a relação força→prob é não-linear e amplifica diferenças)
+    # INICIALIZAÇÃO: warm-start de um vetor já otimizado (poucas iterações para
+    # refinar), ou forças proporcionais ao mercado (raiz p/ não exagerar no início,
+    # já que a relação força→prob é não-linear e amplifica diferenças).
     # -------------------------------------------------------
-    forces = np.sqrt(p_market / p_market.max())
+    if vetor_inicial:
+        with open(vetor_inicial, "r", encoding="utf-8") as f:
+            vec0 = json.load(f)["vetor_forca"]
+        forces = np.array([float(vec0[tk]) for tk in team_keys])
+        print(f"   Warm-start de:           {Path(vetor_inicial).name}")
+    else:
+        forces = np.sqrt(p_market / p_market.max())
     forces = normalizar_forcas(forces)
 
     # Log de iterações
@@ -239,7 +268,7 @@ def buscar_vetor_forca(reference_path=None):
     
     for iteration in range(1, MAX_ITERACOES + 1):
         # Learning rate com decay linear
-        alpha = ALPHA_INICIAL - (ALPHA_INICIAL - ALPHA_FINAL) * (iteration - 1) / max(1, MAX_ITERACOES - 1)
+        alpha = alpha_ini - (alpha_ini - alpha_fim) * (iteration - 1) / max(1, MAX_ITERACOES - 1)
         
         # Construir strengths dict com a forca pura
         strengths = {tk: float(forces[i]) for i, tk in enumerate(team_keys)}
@@ -247,10 +276,14 @@ def buscar_vetor_forca(reference_path=None):
         # Construir cache de partidas
         match_cache = build_match_cache(team_keys, strengths, MEDIA_GOLS, USAR_DIXON_COLES, RHO_DIXON_COLES)
         
-        # Simular (semente determinística que varia por iteração: o ruído
-        # se compensa entre iterações sem "viciar" numa realização única)
-        rng_iter = np.random.default_rng(SEED * 100_000 + iteration)
-        champion_counts = simulate_and_count_champions(groups, strengths, match_cache, N_SIMS_POR_ITERACAO, rng=rng_iter)
+        # Simular. Sem CRN: semente varia por iteração (ruído se compensa entre
+        # iterações). Com CRN: semente fixa — as MESMAS copas aleatórias em toda
+        # iteração, então a única mudança é a força (variância da diferença ~0,
+        # convergência fina). A validação final usa semente independente.
+        rng_iter = np.random.default_rng(SEED if usar_crn else SEED * 100_000 + iteration)
+        champion_counts = simulate_and_count_champions(
+            groups, strengths, match_cache, N_SIMS_POR_ITERACAO, rng=rng_iter,
+            locked_group_results=locked_group_results)
         
         # Probabilidades simuladas
         p_sim = np.array([champion_counts[tk] / N_SIMS_POR_ITERACAO for tk in team_keys])
@@ -293,7 +326,7 @@ def buscar_vetor_forca(reference_path=None):
         )
         
         # Critério de parada
-        if metrics["kl_div"] < TOLERANCIA_KL and metrics["mae"] < TOLERANCIA_MAE:
+        if metrics["kl_div"] < tol_kl and metrics["mae"] < tol_mae:
             print(f"\n✅ Convergiu na iteração {iteration}! KL={metrics['kl_div']:.6f}, MAE={metrics['mae']:.6f}")
             break
         
@@ -337,7 +370,8 @@ def buscar_vetor_forca(reference_path=None):
     print(f"   Simulando {n_validacao:,} copas de validação...")
     champion_counts_final = simulate_and_count_champions(
         groups, strengths_final, match_cache_final, n_validacao,
-        rng=np.random.default_rng(SEED - 1))
+        rng=np.random.default_rng(SEED - 1),
+        locked_group_results=locked_group_results)
     p_sim_final = np.array([champion_counts_final[tk] / n_validacao for tk in team_keys])
     metrics_final = compute_metrics(p_market, p_sim_final)
     
@@ -368,6 +402,10 @@ def buscar_vetor_forca(reference_path=None):
             "n_sims_por_iteracao": N_SIMS_POR_ITERACAO,
             "iteracao_convergencia": best_iter,
             "referencia_probabilidades": data["reference_path"],
+            "warm_start_de": vetor_inicial,
+            "crn": usar_crn,
+            "travou_rodada_grupos": travar_resultados,
+            "jogos_grupo_travados": n_travados,
         },
         "metricas_finais": metrics_final,
         "vetor_forca": {tk: float(forces[i]) for i, tk in enumerate(team_keys)},
@@ -424,7 +462,26 @@ if __name__ == "__main__":
                         help='máximo de iterações')
     parser.add_argument('--referencia', type=str, default=None,
                         help='arquivo XLSX/CSV com probabilidades de referencia')
+    parser.add_argument('--vetor-inicial', type=str, default=None,
+                        help='JSON de vetor de força para warm-start (parte daqui)')
+    parser.add_argument('--travar-resultados', action='store_true',
+                        help='trava os jogos de grupo já encerrados (assets/resultados_jogos.json)')
+    parser.add_argument('--crn', action='store_true',
+                        help='common random numbers: semente fixa por iteração (convergência fina)')
+    parser.add_argument('--alpha-inicial', type=float, default=None, help='learning rate inicial')
+    parser.add_argument('--alpha-final', type=float, default=None, help='learning rate final')
+    parser.add_argument('--tol-kl', type=float, default=None, help='tolerância de parada (KL)')
+    parser.add_argument('--tol-mae', type=float, default=None, help='tolerância de parada (MAE)')
     args = parser.parse_args()
     N_SIMS_POR_ITERACAO = args.sims
     MAX_ITERACOES = args.max_iter
-    buscar_vetor_forca(reference_path=args.referencia)
+    buscar_vetor_forca(
+        reference_path=args.referencia,
+        vetor_inicial=args.vetor_inicial,
+        travar_resultados=args.travar_resultados,
+        usar_crn=args.crn,
+        alpha_ini=args.alpha_inicial,
+        alpha_fim=args.alpha_final,
+        tol_kl=args.tol_kl,
+        tol_mae=args.tol_mae,
+    )

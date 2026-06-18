@@ -4,6 +4,8 @@ __pycache__/
 .env
 .venv/
 venv/
+UsersPichautmp_cloudenv/
+*_cloudenv/
 
 # Arquivos temporários
 temp.xlsx

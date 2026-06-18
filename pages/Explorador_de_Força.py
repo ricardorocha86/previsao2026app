@@ -893,6 +893,10 @@ def load_saved_simulation(
             "Bottom16 Lista": "bottom16_lista",
             "MiniZebra Surpresa": "minizebra_surpresa",
             "MiniZebra Lista": "minizebra_lista",
+            "Brasil Encontros": "brasil_encontros",
+            "Terceiros Cond": "terceiro_condicional",
+            "Terceiros Por Pontos": "terceiro_por_pontos",
+            "Terceiros Por Saldo": "terceiro_por_saldo",
         }
 
         has_any_detailed = False
@@ -1210,6 +1214,10 @@ if run_simulation:
             "Bottom16 Lista": detailed_tables["bottom16_lista"],
             "MiniZebra Surpresa": detailed_tables["minizebra_surpresa"],
             "MiniZebra Lista": detailed_tables["minizebra_lista"],
+            "Brasil Encontros": detailed_tables["brasil_encontros"],
+            "Terceiros Cond": detailed_tables["terceiro_condicional"],
+            "Terceiros Por Pontos": detailed_tables["terceiro_por_pontos"],
+            "Terceiros Por Saldo": detailed_tables["terceiro_por_saldo"],
         }
 
     if extra_sheets is None:
@@ -1344,10 +1352,69 @@ if sim_display_state is not None:
                 },
             )
 
+        third_cond_df = detailed_tables.get("terceiro_condicional") if detailed_tables else None
+        if third_cond_df is not None and not third_cond_df.empty:
+            st.markdown("#### Avançar como 3º colocado")
+            st.markdown(
+                _HELP_P.format(
+                    "Para um time que termina em <b>3º</b> do grupo, a probabilidade de estar entre os "
+                    "<b>8 melhores terceiros</b> e avançar ao mata-mata. A 1ª tabela cruza <b>pontos</b> e "
+                    "<b>saldo de gols</b>; as outras duas isolam cada critério. <b>Amostra</b> é quantas "
+                    "vezes a combinação ocorreu (combinações com menos de 1% das copas são omitidas)."
+                ),
+                unsafe_allow_html=True,
+            )
+
+            def _render_third_table(df: pd.DataFrame, height: int = 460) -> None:
+                view = df.copy()
+                view["Prob. Classificar"] = view["Prob. Classificar"] * 100
+                cfg = {
+                    "Pontos": st.column_config.NumberColumn("Pontos", width="small", format="%d"),
+                    "Saldo de Gols": st.column_config.NumberColumn("Saldo de Gols", width="small", format="%d"),
+                    "Prob. Classificar": pct_col(label="Prob. Classificar", width=None),
+                    "Amostra": st.column_config.NumberColumn("Amostra", format="%d"),
+                }
+                cfg = {col: opt for col, opt in cfg.items() if col in view.columns}
+                st.dataframe(
+                    view, width="stretch", height=height, hide_index=True, column_config=cfg
+                )
+
+            by_points_df = detailed_tables.get("terceiro_por_pontos")
+            by_saldo_df = detailed_tables.get("terceiro_por_saldo")
+
+            col_cond, col_pts, col_saldo = st.columns([1.4, 1, 1])
+            with col_cond:
+                st.caption("Por pontos e saldo de gols")
+                _render_third_table(third_cond_df)
+            with col_pts:
+                st.caption("Por pontos (qualquer saldo)")
+                if by_points_df is not None and not by_points_df.empty:
+                    _render_third_table(by_points_df)
+                else:
+                    st.info("Disponível ao rodar uma nova simulação.")
+            with col_saldo:
+                st.caption("Por saldo de gols (qualquer pontuação)")
+                if by_saldo_df is not None and not by_saldo_df.empty:
+                    _render_third_table(by_saldo_df)
+                else:
+                    st.info("Disponível ao rodar uma nova simulação.")
+
     with tab3:
         # ===================== 3. Caminho do Brasil =====================
         if detailed_tables:
             st.markdown("### 🇧🇷 Caminho do Brasil")
+
+            encontros_df = detailed_tables.get("brasil_encontros")
+            if encontros_df is not None and not encontros_df.empty:
+                st.markdown("#### Probabilidade de encontrar o Brasil")
+                st.caption(
+                    "Chance de cada seleção cruzar com o Brasil em algum momento da Copa. "
+                    "Os adversários de grupo aparecem em ~100% (mesmo grupo sempre); as demais "
+                    "refletem os confrontos possíveis no mata-mata."
+                )
+                col_enc, _ = st.columns([1, 1])
+                with col_enc:
+                    show_table(encontros_df, height=360)
 
             st.markdown("#### Adversário no 1º mata-mata, por posição no grupo")
             col_brasil_1, col_brasil_2, col_brasil_3 = st.columns(3)

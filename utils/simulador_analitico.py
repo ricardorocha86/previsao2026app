@@ -125,8 +125,11 @@ def simulate_one_cup_analytics(
     }
     records = []
     group_positions = {}
+    tracked_group_opponents: list[str] = []
 
     for group_name, teams in sorted(groups.items()):
+        if tracked_team in teams:
+            tracked_group_opponents = [team for team in teams if team != tracked_team]
         table = {
             team_key: {
                 "team_key": team_key,
@@ -232,6 +235,18 @@ def simulate_one_cup_analytics(
         current_round = next_round
 
     champion = current_round[0]["team_key"]
+
+    # Conjunto de todas as selecoes que cruzaram com o time rastreado nesta Copa:
+    # os 3 adversarios de grupo (deterministicos) somados aos do mata-mata.
+    brazil_encounters = set(tracked_group_opponents) | set(tracked_opponents_by_stage.values())
+
+    # Para cada time que terminou em 3o do grupo: pontos, saldo e se avancou (Top 32).
+    third_place_obs = [
+        (record["points"], record["goal_diff"], history[record["team_key"]]["Top32"] == 1)
+        for record in records
+        if record["group_position"] == 3
+    ]
+
     return {
         "history": history,
         "group_positions": group_positions,
@@ -240,6 +255,8 @@ def simulate_one_cup_analytics(
         "tracked_opponents_by_stage": tracked_opponents_by_stage,
         "finalists": finalists,
         "champion": champion,
+        "brazil_encounters": brazil_encounters,
+        "third_place_obs": third_place_obs,
     }
 
 
@@ -280,6 +297,8 @@ def run_detailed_simulation(
     title_by_group_position = defaultdict(lambda: {"den": 0, "champ": 0})
     bottom_16_stage_counter = Counter()
     mini_zebra_stage_counter = Counter()
+    brazil_encounter_counter: Counter[str] = Counter()
+    third_place_cond = defaultdict(lambda: {"den": 0, "adv": 0})
 
     rng = np.random.default_rng()
     completed = 0
@@ -358,6 +377,15 @@ def run_detailed_simulation(
                 if any(history[team_key][stage] for team_key in mini_zebra):
                     mini_zebra_stage_counter[stage] += 1
 
+            for team_key in result["brazil_encounters"]:
+                brazil_encounter_counter[team_key] += 1
+
+            for points, goal_diff, advanced in result["third_place_obs"]:
+                cell = third_place_cond[(points, goal_diff)]
+                cell["den"] += 1
+                if advanced:
+                    cell["adv"] += 1
+
         completed += current_chunk
         if progress_callback is not None:
             progress_callback(completed, n_sims)
@@ -387,6 +415,8 @@ def run_detailed_simulation(
             mini_zebra_stage_counter=mini_zebra_stage_counter,
             bottom_16_order=bottom_16_order,
             mini_zebra_order=mini_zebra_order,
+            brazil_encounter_counter=brazil_encounter_counter,
+            third_place_cond=third_place_cond,
         ),
     }
 
@@ -406,6 +436,8 @@ def build_detailed_tables(
     mini_zebra_stage_counter: Counter,
     bottom_16_order: list[str],
     mini_zebra_order: list[str],
+    brazil_encounter_counter: Counter[str],
+    third_place_cond: dict,
 ) -> dict[str, pd.DataFrame]:
     final_rows = []
     for pair, count in finals_counter.most_common():
@@ -545,6 +577,71 @@ def build_detailed_tables(
         # Mantém a ordem do indicador de força (mais fraca primeiro).
         return [{"Seleção": team_names.get(team, team)} for team in order]
 
+    # Probabilidade de cada seleção cruzar com o Brasil em algum momento da Copa.
+    brasil_encontros_rows = [
+        {
+            "Selecao": team_names.get(team, team),
+            "Probabilidade": count / n_sims if n_sims else 0.0,
+        }
+        for team, count in brazil_encounter_counter.most_common()
+    ]
+
+    # Classificação como 3º colocado conforme pontos e saldo de gols.
+    third_place_rows = []
+    for (points, goal_diff), values in third_place_cond.items():
+        den = values["den"]
+        third_place_rows.append(
+            {
+                "Pontos": int(points),
+                "Saldo de Gols": int(goal_diff),
+                "Prob. Classificar": values["adv"] / den if den else 0.0,
+                "Amostra": int(den),
+            }
+        )
+
+    # Descarta combinacoes raras (amostra < 1% das copas simuladas), que poluem
+    # a tabela com probabilidades pouco confiaveis.
+    min_amostra = 0.01 * n_sims
+
+    third_place_df = pd.DataFrame(third_place_rows)
+    if not third_place_df.empty:
+        third_place_df = third_place_df[third_place_df["Amostra"] >= min_amostra]
+        third_place_df = third_place_df.sort_values(
+            by=["Prob. Classificar", "Pontos", "Saldo de Gols"],
+            ascending=[False, False, False],
+        ).reset_index(drop=True)
+
+    # Marginais: probabilidade de classificar em 3o agregando uma das dimensoes.
+    third_by_points = defaultdict(lambda: {"den": 0, "adv": 0})
+    third_by_gd = defaultdict(lambda: {"den": 0, "adv": 0})
+    for (points, goal_diff), values in third_place_cond.items():
+        bp = third_by_points[points]
+        bp["den"] += values["den"]
+        bp["adv"] += values["adv"]
+        bg = third_by_gd[goal_diff]
+        bg["den"] += values["den"]
+        bg["adv"] += values["adv"]
+
+    def _marginal_third_df(data: dict, key_label: str) -> pd.DataFrame:
+        rows = [
+            {
+                key_label: int(key),
+                "Prob. Classificar": values["adv"] / values["den"] if values["den"] else 0.0,
+                "Amostra": int(values["den"]),
+            }
+            for key, values in data.items()
+        ]
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            df = df[df["Amostra"] >= min_amostra]
+            df = df.sort_values(
+                by=["Prob. Classificar", key_label], ascending=[False, False]
+            ).reset_index(drop=True)
+        return df
+
+    third_by_points_df = _marginal_third_df(third_by_points, "Pontos")
+    third_by_gd_df = _marginal_third_df(third_by_gd, "Saldo de Gols")
+
     return {
         "finais": pd.DataFrame(final_rows),
         "brasil_1o_grupo_top32": pd.DataFrame(first_ko_rows_for_position(1)),
@@ -563,4 +660,8 @@ def build_detailed_tables(
         "bottom16_lista": pd.DataFrame(_lista_rows(bottom_16_order)),
         "minizebra_surpresa": pd.DataFrame(_surpresa_rows(mini_zebra_stage_counter)),
         "minizebra_lista": pd.DataFrame(_lista_rows(mini_zebra_order)),
+        "brasil_encontros": pd.DataFrame(brasil_encontros_rows),
+        "terceiro_condicional": third_place_df,
+        "terceiro_por_pontos": third_by_points_df,
+        "terceiro_por_saldo": third_by_gd_df,
     }

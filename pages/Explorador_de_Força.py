@@ -969,13 +969,23 @@ def format_official_simulation_name(filename: str) -> str:
     return label
 
 
+def official_simulation_sort_key(path: Path) -> tuple:
+    date_match = re.search(r"(\d{2})\.(\d{2})\.(\d{4})$", path.stem)
+    file_date = (
+        _dt.strptime(date_match.group(0), "%d.%m.%Y")
+        if date_match
+        else _dt.min
+    )
+    return file_date, path.name.casefold()
+
+
 # --- Simulação oficial: primeiro widget da barra lateral ---
 base_df = load_force_dataframe()
 resultados_dir = BASE_DIR / "resultados"
 os.makedirs(resultados_dir, exist_ok=True)
 official_simulation_paths = sorted(
     resultados_dir.glob("Simulação Oficial*.xlsx"),
-    key=lambda path: (path.stat().st_mtime, path.name.casefold()),
+    key=official_simulation_sort_key,
     reverse=True,
 )
 saved_files_sorted = [path.name for path in official_simulation_paths]

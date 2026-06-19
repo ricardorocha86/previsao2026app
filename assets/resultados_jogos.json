@@ -222,5 +222,13 @@
     "Placar A": 1,
     "Placar B": 0,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Estados Unidos",
+    "Seleção B": "Austrália",
+    "Data": "Sexta-feira, 19 de junho de 2026",
+    "Placar A": 2,
+    "Placar B": 0,
+    "Status": "encerrado"
   }
 ]

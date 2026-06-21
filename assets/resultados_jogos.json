@@ -270,5 +270,13 @@
     "Placar A": 2,
     "Placar B": 1,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Equador",
+    "Seleção B": "Curaçau",
+    "Data": "Sábado 20 de junho de 2026",
+    "Placar A": 0,
+    "Placar B": 0,
+    "Status": "encerrado"
   }
 ]

@@ -286,5 +286,13 @@
     "Placar A": 0,
     "Placar B": 4,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Espanha",
+    "Seleção B": "Arábia Saudita",
+    "Data": "Domingo, 21 de junho de 2026",
+    "Placar A": 4,
+    "Placar B": 0,
+    "Status": "encerrado"
   }
 ]

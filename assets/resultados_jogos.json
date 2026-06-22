@@ -318,5 +318,13 @@
     "Placar A": 2,
     "Placar B": 2,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Argentina",
+    "Seleção B": "Áustria",
+    "Data": "Segunda-feira, 22 de junho de 2026",
+    "Placar A": 2,
+    "Placar B": 0,
+    "Status": "encerrado"
   }
 ]

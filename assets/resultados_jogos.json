@@ -350,5 +350,13 @@
     "Placar A": 1,
     "Placar B": 2,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Portugal",
+    "Seleção B": "Uzbequistão",
+    "Data": "Terça-feira, 23 de junho de 2026",
+    "Placar A": 5,
+    "Placar B": 0,
+    "Status": "encerrado"
   }
 ]

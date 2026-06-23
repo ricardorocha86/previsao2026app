@@ -358,5 +358,13 @@
     "Placar A": 5,
     "Placar B": 0,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Inglaterra",
+    "Seleção B": "Gana",
+    "Data": "Terça-feira, 23 de junho de 2026",
+    "Placar A": 0,
+    "Placar B": 0,
+    "Status": "encerrado"
   }
 ]

@@ -258,22 +258,30 @@ def mesclar(existentes, novas):
     Funde as entradas novas com as já gravadas. Mantém a ordem das existentes
     (diff mínimo) e adiciona as inéditas na ordem do calendário (campo _ordem).
     Devolve (lista_final, n_novas, n_atualizadas).
+
+    O casamento é pelo PAR de seleções (SEM ordem) + Data — nunca pela tupla
+    (Seleção A, Seleção B, Data). Isso é proposital: se a ordem A/B de um jogo
+    mudar na previsão entre execuções (ex.: "Croácia x Panamá" -> "Panamá x
+    Croácia"), a linha existente é ATUALIZADA e reordenada para a ordem nova, em
+    vez de uma 2ª linha do mesmo jogo ser inserida (o que inflava a contagem de
+    jogos encerrados, ex.: 49/104 em vez de 48/104).
     """
     def chave(e):
-        return (e['Seleção A'], e['Seleção B'], e['Data'])
+        return (frozenset((e['Seleção A'], e['Seleção B'])), e['Data'])
 
     indexado = {chave(e): e for e in existentes}
     n_novas = n_atualizadas = 0
     ineditas = []
+    campos = ('Seleção A', 'Seleção B', 'Data', 'Placar A', 'Placar B', 'Status')
     for nv in novas:
         k = chave(nv)
-        limpo = {x: nv[x] for x in
-                 ('Seleção A', 'Seleção B', 'Data', 'Placar A', 'Placar B', 'Status')}
+        limpo = {x: nv[x] for x in campos}
         if k in indexado:
             atual = indexado[k]
-            if (atual.get('Placar A'), atual.get('Placar B'), atual.get('Status')) != \
-               (limpo['Placar A'], limpo['Placar B'], limpo['Status']):
-                indexado[k].update(limpo)
+            # Atualiza (e reordena A/B) se QUALQUER campo divergir, inclusive a
+            # ordem das seleções — assim a linha passa a refletir a previsão.
+            if {x: atual.get(x) for x in campos} != limpo:
+                atual.update(limpo)
                 n_atualizadas += 1
         else:
             ineditas.append((nv['_ordem'], limpo))

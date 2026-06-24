@@ -374,5 +374,21 @@
     "Placar A": 1,
     "Placar B": 0,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Colômbia",
+    "Seleção B": "RD do Congo",
+    "Data": "Terça-feira, 23 de junho de 2026",
+    "Placar A": 1,
+    "Placar B": 0,
+    "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Panamá",
+    "Seleção B": "Croácia",
+    "Data": "Terça-feira, 23 de junho de 2026",
+    "Placar A": 0,
+    "Placar B": 1,
+    "Status": "encerrado"
   }
 ]

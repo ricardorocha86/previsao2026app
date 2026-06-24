@@ -382,5 +382,21 @@
     "Placar A": 1,
     "Placar B": 0,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Suíça",
+    "Seleção B": "Canadá",
+    "Data": "Quarta-feira, 24 de junho de 2026",
+    "Placar A": 2,
+    "Placar B": 1,
+    "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Bósnia e Herzegovina",
+    "Seleção B": "Catar",
+    "Data": "Quarta-feira, 24 de junho de 2026",
+    "Placar A": 3,
+    "Placar B": 1,
+    "Status": "encerrado"
   }
 ]

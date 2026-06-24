@@ -424,10 +424,10 @@ def render_param_sidebar() -> ModelParams:
             "param_elasticidade": DEFAULT_ELASTICIDADE,
             "param_usar_dixon_coles": DEFAULT_USAR_DIXON_COLES,
             "param_rho_dixon_coles": DEFAULT_RHO_DIXON_COLES,
-            "param_usar_vetor_forca_otimizado": False,
+            "param_usar_vetor_forca_otimizado": True,
         }
     else:
-        st.session_state["model_sidebar_params"].setdefault("param_usar_vetor_forca_otimizado", False)
+        st.session_state["model_sidebar_params"].setdefault("param_usar_vetor_forca_otimizado", True)
         st.session_state["model_sidebar_params"].setdefault("param_media_gols_vetor_otimizado", 3.0)
 
     # Sincroniza do dicionário persistente para as chaves atuais do session_state
@@ -521,7 +521,7 @@ def render_param_sidebar() -> ModelParams:
                 "param_elasticidade": DEFAULT_ELASTICIDADE,
                 "param_usar_dixon_coles": DEFAULT_USAR_DIXON_COLES,
                 "param_rho_dixon_coles": DEFAULT_RHO_DIXON_COLES,
-                "param_usar_vetor_forca_otimizado": False,
+                "param_usar_vetor_forca_otimizado": True,
             }
             # Remove chaves do session_state dos sliders para recarregarem os novos valores padrão
             for key in st.session_state["model_sidebar_params"].keys():

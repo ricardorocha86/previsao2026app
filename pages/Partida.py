@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.helpers import inject_custom_css
 from utils.forca_core import (
     build_combined,
+    compute_knockout_probabilities,
     compute_match_probabilities,
     ensure_selected_teams,
     load_force_dataframe,
@@ -27,11 +28,20 @@ st.markdown(
 <p style="font-size: 1rem; margin-bottom: 1.5rem;">
 Escolha duas seleções e veja as probabilidades de vitória, empate e derrota,
 os gols esperados e a matriz de placares — tudo a partir do indicador de força e
-dos parâmetros do modelo definidos na barra lateral.
+dos parâmetros do modelo definidos na barra lateral. Ative o
+<strong>modo mata-mata</strong> para ver, sem empate, a chance de cada seleção
+avançar (incluindo prorrogação e pênaltis), como na simulação da Copa.
 </p>
 """,
     unsafe_allow_html=True,
 )
+
+with st.sidebar:
+    st.markdown("#### Tipo de Jogo")
+    modo_mata_mata = st.toggle(
+        "Modo mata-mata",
+        key="partida_modo_mata_mata",
+    )
 
 params = render_param_sidebar()
 base_df = load_force_dataframe()
@@ -266,51 +276,88 @@ else:
 
         st.markdown("<div style='height: 1.2rem;'></div>", unsafe_allow_html=True)
 
-        col_prob_1, col_prob_2, col_prob_3 = st.columns([3, 2, 3])
+        if modo_mata_mata:
+            knockout = compute_knockout_probabilities(match)
+            advance_a = float(knockout["advance_a"])
+            advance_b = float(knockout["advance_b"])
 
-        with col_prob_1:
+            col_adv_1, col_adv_2 = st.columns(2)
+            with col_adv_1:
+                st.markdown(
+                    f"""
+<div class="match-prob-card" style="border: 2px solid #209927; box-shadow: 0 2px 12px rgba(32,153,39,0.12);">
+    <div class="match-team-label match-team-label--home" style="color: #209927;">{home_team}</div>
+    <div class="match-prob-value match-prob-value--home" style="color: #209927;">{advance_a:.1%}</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+            with col_adv_2:
+                st.markdown(
+                    f"""
+<div class="match-prob-card" style="border: 2px solid #035C88; box-shadow: 0 2px 12px rgba(3,92,136,0.12);">
+    <div class="match-team-label match-team-label--away" style="color: #035C88;">{away_team}</div>
+    <div class="match-prob-value match-prob-value--away" style="color: #035C88;">{advance_b:.1%}</div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+
             st.markdown(
                 f"""
+<div style="background: #e0e0e0; border-radius: 20px; height: 36px; display: flex; overflow: hidden; margin: 1rem 0 1.5rem 0; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);">
+    <div style="width: {advance_a * 100:.2f}%; background: #209927;"></div>
+    <div style="width: {advance_b * 100:.2f}%; background: #035C88;"></div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
+        else:
+            col_prob_1, col_prob_2, col_prob_3 = st.columns([3, 2, 3])
+
+            with col_prob_1:
+                st.markdown(
+                    f"""
 <div class="match-prob-card" style="border: 2px solid #209927; box-shadow: 0 2px 12px rgba(32,153,39,0.12);">
     <div class="match-team-label match-team-label--home" style="color: #209927;">{home_team}</div>
     <div class="match-prob-value match-prob-value--home" style="color: #209927;">{float(match['win_a']):.1%}</div>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
+                    unsafe_allow_html=True,
+                )
 
-        with col_prob_2:
-            st.markdown(
-                f"""
+            with col_prob_2:
+                st.markdown(
+                    f"""
 <div class="match-prob-card match-prob-card--draw" style="border: 2px solid #9e9e9e; box-shadow: 0 2px 12px rgba(158,158,158,0.12);">
     <div class="match-card-label match-draw-label">Empate</div>
     <div class="match-prob-value match-draw-value" style="color: #9e9e9e;">{float(match['draw']):.1%}</div>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
+                    unsafe_allow_html=True,
+                )
 
-        with col_prob_3:
-            st.markdown(
-                f"""
+            with col_prob_3:
+                st.markdown(
+                    f"""
 <div class="match-prob-card" style="border: 2px solid #035C88; box-shadow: 0 2px 12px rgba(3,92,136,0.12);">
     <div class="match-team-label match-team-label--away" style="color: #035C88;">{away_team}</div>
     <div class="match-prob-value match-prob-value--away" style="color: #035C88;">{float(match['win_b']):.1%}</div>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
+                    unsafe_allow_html=True,
+                )
 
-        st.markdown(
-            f"""
+            st.markdown(
+                f"""
 <div style="background: #e0e0e0; border-radius: 20px; height: 36px; display: flex; overflow: hidden; margin: 1rem 0 1.5rem 0; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);">
     <div style="width: {float(match['win_a']) * 100:.2f}%; background: #209927;"></div>
     <div style="width: {float(match['draw']) * 100:.2f}%; background: linear-gradient(90deg, #d8d8d8, #b8b8b8);"></div>
     <div style="width: {float(match['win_b']) * 100:.2f}%; background: #035C88;"></div>
 </div>
 """,
-            unsafe_allow_html=True,
-        )
+                unsafe_allow_html=True,
+            )
 
     with col_right:
         max_gols_display = 7
@@ -341,8 +388,16 @@ else:
                 showscale=False,
             )
         )
+        if modo_mata_mata:
+            titulo_placares = (
+                "Probabilidade de Placares"
+                "<br><span style='font-size:13px; color:#9aa39a;'>no tempo regular (90 min)</span>"
+            )
+        else:
+            titulo_placares = "Probabilidade de Placares"
+
         fig_heatmap.update_layout(
-            title=dict(text="Probabilidade de Placares", x=0.5, xanchor="center", font=dict(size=20)),
+            title=dict(text=titulo_placares, x=0.5, xanchor="center", font=dict(size=20)),
             xaxis=dict(
                 title=dict(text="", standoff=18, font=dict(size=18)),
                 tickfont=dict(size=13),
@@ -373,6 +428,6 @@ else:
             font_color="#C9D1C9",
 
             height=598,
-            margin=dict(l=72, r=20, t=60, b=95),
+            margin=dict(l=72, r=20, t=78 if modo_mata_mata else 60, b=95),
         )
         st.plotly_chart(fig_heatmap, use_container_width=True)

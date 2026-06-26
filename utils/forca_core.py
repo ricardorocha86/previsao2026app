@@ -389,6 +389,57 @@ def compute_match_probabilities(
     }
 
 
+def compute_knockout_probabilities(match: dict[str, float | np.ndarray]) -> dict[str, float]:
+    """Probabilidades de avanço no mata-mata (sem empate), coerentes com o motor.
+
+    Reproduz analiticamente o que ``PoissonMatchSimulator.simulate_match`` faz com
+    ``mata_mata=True``: empate no tempo regular vai para prorrogação (gols extras
+    ``~ Poisson(lambda * 0.3)`` independentes, sem Dixon-Coles); persistindo o empate,
+    a decisão por pênaltis segue o ``share`` de força. Como num empate os gols do
+    tempo regular são iguais, o vencedor da prorrogação depende apenas de quem marca
+    mais nela.
+
+    Recebe o dicionário de ``compute_match_probabilities`` e devolve, entre outros,
+    ``advance_a``/``advance_b`` (que somam 1.0).
+    """
+    lambda_a_extra = float(match["lambda_a"]) * 0.3
+    lambda_b_extra = float(match["lambda_b"]) * 0.3
+    share_a = float(match["share_a"])
+    share_b = float(match["share_b"])
+    win_a = float(match["win_a"])
+    win_b = float(match["win_b"])
+    draw = float(match["draw"])
+
+    max_extra = 15
+    goal_range = np.arange(max_extra + 1)
+    probs_a = poisson.pmf(goal_range, lambda_a_extra)
+    probs_b = poisson.pmf(goal_range, lambda_b_extra)
+    probs_a[-1] += max(0.0, 1.0 - probs_a.sum())
+    probs_b[-1] += max(0.0, 1.0 - probs_b.sum())
+
+    extra_matrix = np.outer(probs_a, probs_b)
+    extra_win_a = float(np.tril(extra_matrix, -1).sum())  # gols_a > gols_b
+    extra_win_b = float(np.triu(extra_matrix, 1).sum())   # gols_a < gols_b
+    extra_draw = float(np.trace(extra_matrix))            # gols_a == gols_b
+
+    # Avanço condicionado a empate no tempo regular: prorrogação + pênaltis.
+    adv_given_draw_a = extra_win_a + extra_draw * share_a
+    adv_given_draw_b = extra_win_b + extra_draw * share_b
+
+    advance_a = win_a + draw * adv_given_draw_a
+    advance_b = win_b + draw * adv_given_draw_b
+
+    return {
+        "extra_win_a": extra_win_a,
+        "extra_draw": extra_draw,
+        "extra_win_b": extra_win_b,
+        "adv_given_draw_a": adv_given_draw_a,
+        "adv_given_draw_b": adv_given_draw_b,
+        "advance_a": advance_a,
+        "advance_b": advance_b,
+    }
+
+
 def ensure_selected_teams(team_options: list[str]) -> None:
     """Inicializa os valores padrão no session_state apenas na primeira execução."""
     if not team_options:

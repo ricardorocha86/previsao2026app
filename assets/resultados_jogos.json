@@ -432,11 +432,11 @@
     "Status": "encerrado"
   },
   {
-    "Seleção A": "Costa do Marfim",
-    "Seleção B": "Curaçau",
+    "Seleção A": "Curaçau",
+    "Seleção B": "Costa do Marfim",
     "Data": "Quinta-feira, 25 de junho de 2026",
-    "Placar A": 2,
-    "Placar B": 0,
+    "Placar A": 0,
+    "Placar B": 2,
     "Status": "encerrado"
   },
   {
@@ -456,11 +456,27 @@
     "Status": "encerrado"
   },
   {
-    "Seleção A": "Holanda",
-    "Seleção B": "Tunísia",
+    "Seleção A": "Tunísia",
+    "Seleção B": "Holanda",
+    "Data": "Quinta-feira, 25 de junho de 2026",
+    "Placar A": 1,
+    "Placar B": 3,
+    "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Turquia",
+    "Seleção B": "Estados Unidos",
     "Data": "Quinta-feira, 25 de junho de 2026",
     "Placar A": 3,
-    "Placar B": 1,
+    "Placar B": 2,
+    "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Paraguai",
+    "Seleção B": "Austrália",
+    "Data": "Quinta-feira, 25 de junho de 2026",
+    "Placar A": 0,
+    "Placar B": 0,
     "Status": "encerrado"
   }
 ]

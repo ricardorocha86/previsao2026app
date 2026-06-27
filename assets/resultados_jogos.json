@@ -510,5 +510,21 @@
     "Placar A": 0,
     "Placar B": 1,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Egito",
+    "Seleção B": "Irã",
+    "Data": "Sexta-feira, 26 de junho de 2026",
+    "Placar A": 1,
+    "Placar B": 1,
+    "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Nova Zelândia",
+    "Seleção B": "Bélgica",
+    "Data": "Sexta-feira, 26 de junho de 2026",
+    "Placar A": 1,
+    "Placar B": 5,
+    "Status": "encerrado"
   }
 ]

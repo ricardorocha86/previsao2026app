@@ -494,5 +494,21 @@
     "Placar A": 1,
     "Placar B": 4,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Cabo Verde",
+    "Seleção B": "Arábia Saudita",
+    "Data": "Sexta-feira, 26 de junho de 2026",
+    "Placar A": 0,
+    "Placar B": 0,
+    "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Espanha",
+    "Seleção B": "Uruguai",
+    "Data": "Sexta-feira, 26 de junho de 2026",
+    "Placar A": 1,
+    "Placar B": 0,
+    "Status": "encerrado"
   }
 ]

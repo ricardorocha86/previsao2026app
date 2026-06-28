@@ -558,5 +558,21 @@
     "Placar A": 0,
     "Placar B": 2,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Argélia",
+    "Seleção B": "Áustria",
+    "Data": "Sábado, 27 de junho de 2026",
+    "Placar A": 3,
+    "Placar B": 3,
+    "Status": "encerrado"
+  },
+  {
+    "Seleção A": "Jordânia",
+    "Seleção B": "Argentina",
+    "Data": "Sábado, 27 de junho de 2026",
+    "Placar A": 1,
+    "Placar B": 3,
+    "Status": "encerrado"
   }
 ]

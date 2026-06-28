@@ -74,14 +74,14 @@ def add_team_flags(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def pct_col(label: str | None = None, width: str | None = "medium") -> "st.column_config.ProgressColumn":
-    """Coluna de probabilidade em % com 1 casa decimal e barra na célula.
+    """Coluna de probabilidade em % com 2 casas decimais e barra na célula.
 
     Os valores devem estar em escala 0–100 (use ``prep_pct`` para multiplicar por 100).
     Em tabelas ``width="stretch"`` passe ``width=None`` para não fixar a largura da coluna
     (o stretch distribui o espaço); em tabelas ``content`` o padrão ``"medium"`` mantém a barra legível.
     """
     return st.column_config.ProgressColumn(
-        label, format="%.1f%%", width=width, min_value=0, max_value=100
+        label, format="%.2f%%", width=width, min_value=0, max_value=100
     )
 
 

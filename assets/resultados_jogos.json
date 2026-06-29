@@ -644,5 +644,14 @@
     "Placar B": 1,
     "Status": "encerrado",
     "Vencedor": "Brasil"
+  },
+  {
+    "Seleção A": "Alemanha",
+    "Seleção B": "Paraguai",
+    "Data": "Segunda-feira, 29 de junho de 2026",
+    "Placar A": 1,
+    "Placar B": 1,
+    "Status": "encerrado",
+    "Vencedor": "Paraguai"
   }
 ]

@@ -32,6 +32,7 @@ from utils.forca_core import (
 )
 from utils.resultados_oficiais import (
     LockedGroupResults,
+    LockedKnockoutResults,
     load_official_group_results,
     render_official_results_sidebar,
 )
@@ -654,6 +655,7 @@ def run_complete_simulation_progressive(
     tipo_chaveamento: str = "Sorteio Oficial",
     chunk_size: int = 1000,
     locked_group_results: LockedGroupResults | None = None,
+    locked_knockout_results: LockedKnockoutResults | None = None,
     locked_match_count: int = 0,
 ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
     st.markdown(
@@ -694,7 +696,7 @@ div[data-testid="stDialog"] div[data-testid="stAlert"] p {
         f"""
 <div class="simulation-dialog-summary">
     Rodando <b>{_format_count(n_sims)}</b> copas com chaveamento <b>{tipo_chaveamento}</b>.
-    {"<br>Resultados oficiais travados: <b>" + str(locked_match_count) + "</b> jogo(s) da fase de grupos." if locked_group_results else ""}
+    {"<br>Resultados oficiais travados: <b>" + str(locked_match_count) + "</b> jogo(s)." if locked_match_count else ""}
 </div>
 """,
         unsafe_allow_html=True,
@@ -757,6 +759,7 @@ div[data-testid="stDialog"] div[data-testid="stAlert"] p {
             chunk_size=chunk_size,
             progress_callback=update_progress,
             locked_group_results=locked_group_results,
+            locked_knockout_results=locked_knockout_results,
         )
 
     render_dialog_status(
@@ -1120,7 +1123,16 @@ if run_simulation:
         if use_official_results and official_results.locked_match_count > 0
         else None
     )
-    locked_match_count = official_results.locked_match_count if locked_group_results else 0
+    locked_knockout_results = (
+        official_results.locked_knockout_results
+        if use_official_results and official_results.locked_knockout_count > 0
+        else None
+    )
+    locked_match_count = (
+        official_results.locked_total_match_count
+        if locked_group_results or locked_knockout_results
+        else 0
+    )
     run_complete_simulation_progressive(
         dataframe=combined_df,
         media_gols=media_gols,
@@ -1130,6 +1142,7 @@ if run_simulation:
         tipo_chaveamento=tipo_chaveamento,
         chunk_size=1000,
         locked_group_results=locked_group_results,
+        locked_knockout_results=locked_knockout_results,
         locked_match_count=locked_match_count,
     )
     sim_result = st.session_state.pop("_explorador_latest_sim_result", None)
@@ -1205,7 +1218,7 @@ if run_simulation:
             {"Parametro": "Rho Dixon-Coles", "Valor": rho_dixon_coles},
             {"Parametro": "Número de Copas", "Valor": int(n_sims)},
             {"Parametro": "Tipo de Simulação", "Valor": tipo_simulacao},
-            {"Parametro": "Resultados oficiais travados", "Valor": bool(locked_group_results)},
+            {"Parametro": "Resultados oficiais travados", "Valor": bool(locked_group_results or locked_knockout_results)},
             {"Parametro": "Jogos oficiais travados", "Valor": locked_match_count},
         ]
     )

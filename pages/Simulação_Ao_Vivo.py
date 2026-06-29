@@ -22,6 +22,7 @@ from utils.forca_core import (
 )
 from utils.resultados_oficiais import (
     LockedGroupResults,
+    LockedKnockoutResults,
     load_official_group_results,
     render_official_results_sidebar,
 )
@@ -454,6 +455,33 @@ def group_match_result(
         params,
         knockout=False,
     )
+
+
+def knockout_match_result(
+    team_a: str,
+    team_b: str,
+    strengths: dict[str, float],
+    rng: np.random.Generator,
+    params: ModelParams,
+    locked_knockout_results: LockedKnockoutResults | None = None,
+) -> dict:
+    if locked_knockout_results:
+        locked = locked_knockout_results.get((team_a, team_b))
+        if locked is not None and locked[2] in (1, 2):
+            goals_a, goals_b, winner_code = locked
+            winner = team_a if winner_code == 1 else team_b
+            return {
+                "team_a": team_a,
+                "team_b": team_b,
+                "goals_a": goals_a,
+                "goals_b": goals_b,
+                "winner": winner,
+                "penalty_winner": winner if goals_a == goals_b else None,
+                "extra_time": False,
+                "official_result": True,
+            }
+
+    return simulate_match(team_a, team_b, strengths, rng, params, knockout=True)
 
 
 def phase_progress() -> tuple[int, int]:
@@ -954,6 +982,7 @@ def run_knockout_stage(
     delay: float,
     slots: tuple,
     top_team: str,
+    locked_knockout_results: LockedKnockoutResults | None = None,
 ) -> None:
     phase = st.session_state["live_phase"]
     rng = np.random.default_rng(st.session_state["live_seed"] + len(st.session_state.get("live_matches", [])) * 97)
@@ -963,7 +992,14 @@ def run_knockout_stage(
         disputa = st.session_state.get("live_terceiro_disputa", [])
         if len(disputa) >= 2:
             left, right = disputa[0], disputa[1]
-            match = simulate_match(left["team"], right["team"], strengths, rng, params, knockout=True)
+            match = knockout_match_result(
+                left["team"],
+                right["team"],
+                strengths,
+                rng,
+                params,
+                locked_knockout_results,
+            )
             winner_record = left if match["winner"] == left["team"] else right
             match.update({"phase": "third", "slot": "1/1", "winner": winner_record["team"]})
             st.session_state["live_current_phase_matches"] = [match]
@@ -989,7 +1025,14 @@ def run_knockout_stage(
     for slot_index in range(0, len(current_round), 2):
         left = current_round[slot_index]
         right = current_round[slot_index + 1]
-        match = simulate_match(left["team"], right["team"], strengths, rng, params, knockout=True)
+        match = knockout_match_result(
+            left["team"],
+            right["team"],
+            strengths,
+            rng,
+            params,
+            locked_knockout_results,
+        )
         winner_record = left if match["winner"] == left["team"] else right
         loser_record = right if winner_record is left else left
         winners.append(winner_record)
@@ -1037,6 +1080,7 @@ def simulate_cup_summary(
     params: ModelParams,
     rng: np.random.Generator,
     locked_group_results: LockedGroupResults | None = None,
+    locked_knockout_results: LockedKnockoutResults | None = None,
 ) -> dict:
     group_tables = new_group_table(groups, strengths)
     for fixture in build_group_fixtures(groups):
@@ -1066,7 +1110,14 @@ def simulate_cup_summary(
         for slot_index in range(0, len(current_round), 2):
             left = current_round[slot_index]
             right = current_round[slot_index + 1]
-            match = simulate_match(left["team"], right["team"], strengths, rng, params, knockout=True)
+            match = knockout_match_result(
+                left["team"],
+                right["team"],
+                strengths,
+                rng,
+                params,
+                locked_knockout_results,
+            )
             winner_record = left if match["winner"] == left["team"] else right
             loser_record = right if winner_record is left else left
             winners.append(winner_record)
@@ -1082,7 +1133,14 @@ def simulate_cup_summary(
         current_round = winners
         if phase == "semis" and len(third_place_contenders) >= 2:
             left, right = third_place_contenders[0], third_place_contenders[1]
-            match = simulate_match(left["team"], right["team"], strengths, rng, params, knockout=True)
+            match = knockout_match_result(
+                left["team"],
+                right["team"],
+                strengths,
+                rng,
+                params,
+                locked_knockout_results,
+            )
             terceiro = match["winner"]
 
     return {
@@ -1100,6 +1158,7 @@ def append_batch_cups(
     strengths: dict[str, float],
     params: ModelParams,
     locked_group_results: LockedGroupResults | None = None,
+    locked_knockout_results: LockedKnockoutResults | None = None,
 ) -> None:
     rng = np.random.default_rng(int(time.time_ns() % 2**32))
     historico = st.session_state.setdefault("historico_copas", [])
@@ -1107,7 +1166,7 @@ def append_batch_cups(
     timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
     for offset in range(amount):
-        result = simulate_cup_summary(groups, strengths, params, rng, locked_group_results)
+        result = simulate_cup_summary(groups, strengths, params, rng, locked_group_results, locked_knockout_results)
         historico.append(
             {
                 "edicao": start_index + offset,
@@ -1146,6 +1205,7 @@ def show_batch_cups_dialog(
     bandeiras: dict[str, str],
     amount: int = 22,
     locked_group_results: LockedGroupResults | None = None,
+    locked_knockout_results: LockedKnockoutResults | None = None,
 ) -> None:
     progress_bar = st.progress(0, text="Preparando simulações...")
     current_slot = st.empty()
@@ -1153,7 +1213,7 @@ def show_batch_cups_dialog(
     timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
     for index in range(amount):
-        result = simulate_cup_summary(groups, strengths, params, rng, locked_group_results)
+        result = simulate_cup_summary(groups, strengths, params, rng, locked_group_results, locked_knockout_results)
         edicao = append_cup_result(result, timestamp=timestamp)
         champion = result["campeao"]
         vice = result["vice"]
@@ -1308,13 +1368,19 @@ locked_group_results = (
     if use_official_results and official_results.locked_match_count > 0
     else None
 )
+locked_knockout_results = (
+    official_results.locked_knockout_results_by_name
+    if use_official_results and official_results.locked_knockout_count > 0
+    else None
+)
 
 st.session_state["live_model_subtitle"] = "Configure a velocidade e inicie a simulação."
 force_signature = (
     params.usar_vetor_otimizado,
     params.media_gols,
-    bool(locked_group_results),
+    bool(locked_group_results or locked_knockout_results),
     official_results.locked_match_count if locked_group_results else 0,
+    official_results.locked_knockout_count if locked_knockout_results else 0,
     tuple((team, round(float(force), 8)) for team, force in sorted(strengths.items())),
 )
 
@@ -1346,6 +1412,7 @@ if simulate_22_cups:
         bandeiras_dict,
         amount=22,
         locked_group_results=locked_group_results,
+        locked_knockout_results=locked_knockout_results,
     )
 
 if clear_history:
@@ -1390,7 +1457,15 @@ if st.session_state.get("live_running"):
             locked_group_results=locked_group_results,
         )
     elif st.session_state["live_phase"] in NEXT_PHASE:
-        run_knockout_stage(params, strengths, bandeiras_dict, delay_value, slots, top_team)
+        run_knockout_stage(
+            params,
+            strengths,
+            bandeiras_dict,
+            delay_value,
+            slots,
+            top_team,
+            locked_knockout_results=locked_knockout_results,
+        )
     elif st.session_state["live_phase"] == "champion":
         finish_cup(bandeiras_dict)
         # Atualiza o histórico no topo assim que a copa termina (sem esperar novo rerun).

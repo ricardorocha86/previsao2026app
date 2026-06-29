@@ -264,8 +264,16 @@ def ordenar_grupo_oficial(tabela_grupo, strengths, rng):
         ), reverse=True))
     return resultado
 
+
+def _knockout_match_result(team_a, team_b, rng, match_simulator: BaseMatchSimulator, locked_knockout_results=None):
+    if locked_knockout_results:
+        locked = locked_knockout_results.get((team_a, team_b))
+        if locked is not None and locked[2] in (1, 2):
+            return locked
+    return match_simulator.simulate_match(team_a, team_b, rng, True)
+
 def simulate_one_cup_oficial(groups, strengths, rng, match_simulator: BaseMatchSimulator,
-                             locked_group_results=None):
+                             locked_group_results=None, locked_knockout_results=None):
     """Simula uma Copa completa seguindo as regras de 2026 (48 times).
 
     Se ``locked_group_results`` for fornecido (dict
@@ -317,7 +325,13 @@ def simulate_one_cup_oficial(groups, strengths, rng, match_simulator: BaseMatchS
         next_s = stages[len(current_round)]
         next_r = []
         for i in range(0, len(current_round), 2):
-            _, _, win = match_simulator.simulate_match(current_round[i]["team_key"], current_round[i+1]["team_key"], rng, True)
+            _, _, win = _knockout_match_result(
+                current_round[i]["team_key"],
+                current_round[i+1]["team_key"],
+                rng,
+                match_simulator,
+                locked_knockout_results,
+            )
             w_rec = current_round[i] if win == 1 else current_round[i+1]
             history[w_rec["team_key"]][next_s] = 1
             next_r.append(w_rec)

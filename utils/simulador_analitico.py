@@ -55,6 +55,7 @@ DISPLAY_STAGE_BY_HISTORY = {
 BRAZIL_KEY = "brazil"
 LockedGroupResult = tuple[int, int, int]
 LockedGroupResults = dict[tuple[str, str, str], LockedGroupResult]
+LockedKnockoutResults = dict[tuple[str, str], LockedGroupResult]
 
 
 def _ordered_pair(team_a: str, team_b: str) -> tuple[str, str]:
@@ -110,6 +111,20 @@ def _group_match_result(
     return match_simulator.simulate_match(team_a, team_b, rng, False)
 
 
+def _knockout_match_result(
+    team_a: str,
+    team_b: str,
+    rng: np.random.Generator,
+    match_simulator: BaseMatchSimulator,
+    locked_knockout_results: LockedKnockoutResults | None,
+) -> LockedGroupResult:
+    if locked_knockout_results:
+        locked = locked_knockout_results.get((team_a, team_b))
+        if locked is not None and locked[2] in (1, 2):
+            return locked
+    return match_simulator.simulate_match(team_a, team_b, rng, True)
+
+
 def simulate_one_cup_analytics(
     groups: dict[str, list[str]],
     strengths: dict[str, float],
@@ -117,6 +132,7 @@ def simulate_one_cup_analytics(
     match_simulator: BaseMatchSimulator,
     tracked_team: str = BRAZIL_KEY,
     locked_group_results: LockedGroupResults | None = None,
+    locked_knockout_results: LockedKnockoutResults | None = None,
 ) -> dict:
     history = {
         team_key: {stage: 0 for stage in SIM_STAGE_COLUMNS}
@@ -218,11 +234,12 @@ def simulate_one_cup_analytics(
                 tracked_opponents_by_stage[match_stage] = right_key
             elif right_key == tracked_team:
                 tracked_opponents_by_stage[match_stage] = left_key
-            _, _, winner = match_simulator.simulate_match(
+            _, _, winner = _knockout_match_result(
                 left_key,
                 right_key,
                 rng,
-                True,
+                match_simulator,
+                locked_knockout_results,
             )
             winner_record = left if winner == 1 else right
             loser_record = right if winner == 1 else left
@@ -270,6 +287,7 @@ def run_detailed_simulation(
     progress_callback: Callable[[int, int], None] | None = None,
     tracked_team: str = BRAZIL_KEY,
     locked_group_results: LockedGroupResults | None = None,
+    locked_knockout_results: LockedKnockoutResults | None = None,
 ) -> dict:
     groups = dataframe.groupby("Grupo")["team_key"].apply(list).to_dict()
     team_keys = dataframe["team_key"].tolist()
@@ -309,9 +327,11 @@ def run_detailed_simulation(
             if "Aleatório" in tipo_chaveamento or "Aleatorio" in tipo_chaveamento:
                 groups_in_use = randomizar_grupos(groups, strengths)
                 locked_results_in_use = None
+                locked_knockout_in_use = None
             else:
                 groups_in_use = groups
                 locked_results_in_use = locked_group_results
+                locked_knockout_in_use = locked_knockout_results
 
             result = simulate_one_cup_analytics(
                 groups=groups_in_use,
@@ -320,6 +340,7 @@ def run_detailed_simulation(
                 match_simulator=match_simulator,
                 tracked_team=tracked_team,
                 locked_group_results=locked_results_in_use,
+                locked_knockout_results=locked_knockout_in_use,
             )
             history = result["history"]
             champion = result["champion"]

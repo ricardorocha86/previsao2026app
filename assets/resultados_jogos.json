@@ -574,5 +574,14 @@
     "Placar A": 1,
     "Placar B": 3,
     "Status": "encerrado"
+  },
+  {
+    "Seleção A": "África do Sul",
+    "Seleção B": "Canadá",
+    "Data": "Domingo, 28 de junho de 2026",
+    "Placar A": 0,
+    "Placar B": 1,
+    "Status": "encerrado",
+    "Vencedor": "Canadá"
   }
 ]

@@ -25,6 +25,7 @@ class OfficialResults:
     locked_group_results_by_name: LockedGroupResults
     total_rows: int
     matched_rows: int
+    knockout_rows: int
     unmatched_rows: tuple[str, ...]
     path: Path
 
@@ -76,7 +77,7 @@ def load_official_group_results(
 ) -> OfficialResults:
     path = Path(results_path) if results_path else DEFAULT_RESULTS_PATH
     if not path.exists():
-        return OfficialResults({}, {}, 0, 0, (f"Arquivo nao encontrado: {path}",), path)
+        return OfficialResults({}, {}, 0, 0, 0, (f"Arquivo nao encontrado: {path}",), path)
 
     with open(path, "r", encoding="utf-8") as file:
         raw_results = json.load(file)
@@ -102,6 +103,7 @@ def load_official_group_results(
     locked_by_name: LockedGroupResults = {}
     unmatched: list[str] = []
     matched_rows = 0
+    knockout_rows = 0
 
     for index, row in enumerate(raw_results, start=1):
         if not isinstance(row, dict):
@@ -124,7 +126,7 @@ def load_official_group_results(
         group_a = group_by_team_key.get(team_a_key)
         group_b = group_by_team_key.get(team_b_key)
         if not group_a or group_a != group_b:
-            unmatched.append(f"Linha {index}: jogo fora da fase de grupos ({team_a_raw} x {team_b_raw})")
+            knockout_rows += 1
             continue
 
         try:
@@ -144,7 +146,7 @@ def load_official_group_results(
         locked_by_name[(group_a, team_b_name, team_a_name)] = reversed_result
         matched_rows += 1
 
-    return OfficialResults(locked, locked_by_name, len(raw_results), matched_rows, tuple(unmatched), path)
+    return OfficialResults(locked, locked_by_name, len(raw_results), matched_rows, knockout_rows, tuple(unmatched), path)
 
 
 def render_official_results_sidebar(
@@ -162,9 +164,15 @@ def render_official_results_sidebar(
         )
         if can_use:
             updated_at = _dt.fromtimestamp(official_results.path.stat().st_mtime)
+            extra = (
+                f" · {official_results.knockout_rows} jogo(s) de mata-mata no arquivo"
+                if official_results.knockout_rows
+                else ""
+            )
             st.caption(
                 f"Resultados atualizados em {updated_at.strftime('%d/%m/%Y às %H:%M')} · "
-                f"{official_results.locked_match_count} jogo(s) encerrado(s)."
+                f"{official_results.locked_match_count} jogo(s) da fase de grupos travado(s)"
+                f"{extra}."
             )
         else:
             st.caption("Nenhum resultado de jogo encerrado encontrado.")

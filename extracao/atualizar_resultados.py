@@ -58,6 +58,47 @@ ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scor
 ESPN_HEADERS = {'User-Agent': 'Mozilla/5.0'}
 INICIO_COPA = date(2026, 6, 11)   # primeiro dia de jogos
 
+MESES_PT = {
+    'janeiro': 1,
+    'fevereiro': 2,
+    'março': 3,
+    'marco': 3,
+    'abril': 4,
+    'maio': 5,
+    'junho': 6,
+    'julho': 7,
+    'agosto': 8,
+    'setembro': 9,
+    'outubro': 10,
+    'novembro': 11,
+    'dezembro': 12,
+}
+
+WEEKDAYS_PT = (
+    'Segunda-feira',
+    'Terça-feira',
+    'Quarta-feira',
+    'Quinta-feira',
+    'Sexta-feira',
+    'Sábado',
+    'Domingo',
+)
+
+MONTHS_PT = (
+    'janeiro',
+    'fevereiro',
+    'março',
+    'abril',
+    'maio',
+    'junho',
+    'julho',
+    'agosto',
+    'setembro',
+    'outubro',
+    'novembro',
+    'dezembro',
+)
+
 # --- Mapa de nomes: variantes em inglês/alias -> nome PT canônico ---------
 # As chaves são normalizadas (sem acento, minúsculas, só alfanumérico) na hora
 # da busca, então "Côte d'Ivoire", "Cote d Ivoire" e "Ivory Coast" colidem.
@@ -138,29 +179,60 @@ def para_pt(nome):
 
 
 # --- Leitura das previsões (fonte de verdade do casamento) ----------------
-def carregar_indice_previsoes(caminho):
+def _parse_data_pt(valor):
+    """Extrai AAAA-MM-DD de strings como 'Domingo, 28 de junho de 2026'."""
+    texto = str(valor or '').lower()
+    partes = texto.replace(',', ' ').split()
+    try:
+        dia = int(next(p for p in partes if p.isdigit() and len(p) <= 2))
+        ano = int(next(p for p in partes if p.isdigit() and len(p) == 4))
+        mes_nome = partes[partes.index('de') + 1] if 'de' in partes else ''
+        mes = MESES_PT.get(mes_nome)
+        if not mes:
+            return None
+        return date(ano, mes, dia)
+    except (StopIteration, ValueError, IndexError):
+        return None
+
+
+def _format_data_pt(data):
+    return f"{WEEKDAYS_PT[data.weekday()]}, {data.day} de {MONTHS_PT[data.month - 1]} de {data.year}"
+
+
+def _normalizar_lista_previsoes(payload):
+    return payload if isinstance(payload, list) else next(iter(payload.values()))
+
+
+def carregar_indice_previsoes(caminhos):
     """
-    Lê previsoes_jogos.json e devolve um dict:
-        frozenset({pt_a, pt_b}) -> {'Seleção A', 'Seleção B', 'Data', 'ordem'}
+    Lê um ou mais arquivos de agenda/previsão e devolve um dict:
+        frozenset({pt_a, pt_b}) -> [{'Seleção A', 'Seleção B', 'Data', 'ordem'}]
     'ordem' é o índice na lista (para manter a ordem cronológica ao adicionar).
     Só inclui pares cujas DUAS seleções são reconhecidas (ignora placeholders
     de mata-mata tipo "Vencedor Grupo A").
     """
-    dados = json.loads(Path(caminho).read_text(encoding='utf-8'))
-    lista = dados if isinstance(dados, list) else next(iter(dados.values()))
+    if isinstance(caminhos, (str, Path)):
+        caminhos = [caminhos]
     indice = {}
-    for ordem, jogo in enumerate(lista):
-        a, b = jogo.get('Seleção A'), jogo.get('Seleção B')
-        pt_a, pt_b = para_pt(a), para_pt(b)
-        if not pt_a or not pt_b:
-            continue
-        chave = frozenset((pt_a, pt_b))
-        indice.setdefault(chave, {
-            'Seleção A': a,
-            'Seleção B': b,
-            'Data': jogo.get('Data'),
-            'ordem': ordem,
-        })
+    ordem_global = 0
+    for caminho in caminhos:
+        dados = json.loads(Path(caminho).read_text(encoding='utf-8'))
+        lista = _normalizar_lista_previsoes(dados)
+        for jogo in lista:
+            a, b = jogo.get('Seleção A'), jogo.get('Seleção B')
+            pt_a, pt_b = para_pt(a), para_pt(b)
+            if not pt_a or not pt_b:
+                ordem_global += 1
+                continue
+            chave = frozenset((pt_a, pt_b))
+            indice.setdefault(chave, []).append({
+                'Seleção A': a,
+                'Seleção B': b,
+                'Data': jogo.get('Data'),
+                'data_iso': _parse_data_pt(jogo.get('Data')),
+                'ordem': ordem_global,
+            })
+            ordem_global += 1
     return indice
 
 
@@ -208,10 +280,16 @@ def _eventos_para_jogos(eventos):
         if not casa or not fora or casa.get('score') is None or fora.get('score') is None:
             continue
         encerrados.append({
+            'date': str(ev.get('date') or '')[:10],
             'home': (casa.get('team') or {}).get('displayName'),
             'away': (fora.get('team') or {}).get('displayName'),
             'home_score': int(casa['score']),
             'away_score': int(fora['score']),
+            'winner': (
+                (casa.get('team') or {}).get('displayName') if casa.get('winner')
+                else (fora.get('team') or {}).get('displayName') if fora.get('winner')
+                else None
+            ),
         })
     return encerrados
 
@@ -231,17 +309,36 @@ def montar_resultados(jogos_api, indice_previsoes):
             avisos.append(f"Seleção não reconhecida no MAPA_SELECOES: {faltando!r} "
                           f"(jogo {j['home']} x {j['away']})")
             continue
-        prev = indice_previsoes.get(frozenset((pt_home, pt_away)))
-        if not prev:
-            avisos.append(f"Sem previsão correspondente para {pt_home} x {pt_away} "
-                          f"(ignorado).")
-            continue
+        candidatos = indice_previsoes.get(frozenset((pt_home, pt_away)))
+        data_api = datetime.strptime(j['date'], '%Y-%m-%d').date() if j.get('date') else None
+        if not candidatos:
+            if data_api and data_api >= date(2026, 6, 28):
+                prev = {
+                    'Seleção A': pt_home,
+                    'Seleção B': pt_away,
+                    'Data': _format_data_pt(data_api),
+                    'ordem': 10_000 + len(entradas),
+                }
+            else:
+                avisos.append(f"Sem previsão correspondente para {pt_home} x {pt_away} "
+                              f"(ignorado).")
+                continue
+        elif data_api:
+            candidatos_com_distancia = []
+            for candidato in candidatos:
+                data_prev = candidato.get('data_iso')
+                distancia = abs((data_prev - data_api).days) if data_prev else 999
+                candidatos_com_distancia.append((distancia, candidato['ordem'], candidato))
+            prev = sorted(candidatos_com_distancia, key=lambda x: (x[0], x[1]))[0][2]
+        else:
+            prev = sorted(candidatos, key=lambda x: x['ordem'])[0]
+
         # Placar do mandante (home) vai para a seleção certa conforme A/B da previsão.
         if prev['Seleção A'] == pt_home:
             placar_a, placar_b = j['home_score'], j['away_score']
         else:
             placar_a, placar_b = j['away_score'], j['home_score']
-        entradas.append({
+        entrada = {
             'Seleção A': prev['Seleção A'],
             'Seleção B': prev['Seleção B'],
             'Data': prev['Data'],
@@ -249,7 +346,11 @@ def montar_resultados(jogos_api, indice_previsoes):
             'Placar B': placar_b,
             'Status': 'encerrado',
             '_ordem': prev['ordem'],
-        })
+        }
+        vencedor = para_pt(j.get('winner'))
+        if vencedor:
+            entrada['Vencedor'] = vencedor
+        entradas.append(entrada)
     return entradas, avisos
 
 
@@ -272,15 +373,16 @@ def mesclar(existentes, novas):
     indexado = {chave(e): e for e in existentes}
     n_novas = n_atualizadas = 0
     ineditas = []
-    campos = ('Seleção A', 'Seleção B', 'Data', 'Placar A', 'Placar B', 'Status')
+    campos = ('Seleção A', 'Seleção B', 'Data', 'Placar A', 'Placar B', 'Status', 'Vencedor')
     for nv in novas:
         k = chave(nv)
-        limpo = {x: nv[x] for x in campos}
+        limpo = {x: nv[x] for x in campos if x in nv}
         if k in indexado:
             atual = indexado[k]
             # Atualiza (e reordena A/B) se QUALQUER campo divergir, inclusive a
             # ordem das seleções — assim a linha passa a refletir a previsão.
-            if {x: atual.get(x) for x in campos} != limpo:
+            atual_limpo = {x: atual.get(x) for x in campos if x in atual or x in limpo}
+            if atual_limpo != limpo:
                 atual.update(limpo)
                 n_atualizadas += 1
         else:
@@ -333,8 +435,8 @@ def main():
                         help='Data inicial AAAA-MM-DD a consultar (padrão: 2026-06-11).')
     parser.add_argument('--ate', default=None,
                         help='Data final AAAA-MM-DD a consultar (padrão: hoje).')
-    parser.add_argument('--previsoes', default=str(PREVISOES_PADRAO),
-                        help='Caminho do previsoes_jogos.json (fonte de verdade do casamento).')
+    parser.add_argument('--previsoes', nargs='+', default=[str(PREVISOES_PADRAO)],
+                        help='Caminho(s) de agenda/previsões usados como fonte de verdade do casamento.')
     parser.add_argument('--saidas', nargs='*', default=[str(p) for p in SAIDAS_PADRAO],
                         help='Arquivos resultados_jogos.json a atualizar (dois por padrão).')
     parser.add_argument('--dry-run', action='store_true',

@@ -5,7 +5,8 @@
     "Data": "Quinta-feira, 11 de junho de 2026",
     "Placar A": 2,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "México"
   },
   {
     "Seleção A": "Coreia do Sul",
@@ -13,7 +14,8 @@
     "Data": "Quinta-feira, 11 de junho de 2026",
     "Placar A": 2,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Coreia do Sul"
   },
   {
     "Seleção A": "Canadá",
@@ -29,7 +31,8 @@
     "Data": "Sexta-feira, 12 de junho de 2026",
     "Placar A": 4,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Estados Unidos"
   },
   {
     "Seleção A": "Catar",
@@ -53,7 +56,8 @@
     "Data": "Sábado, 13 de junho de 2026",
     "Placar A": 0,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Escócia"
   },
   {
     "Seleção A": "Alemanha",
@@ -61,7 +65,8 @@
     "Data": "Domingo, 14 de junho de 2026",
     "Placar A": 7,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Alemanha"
   },
   {
     "Seleção A": "Austrália",
@@ -69,7 +74,8 @@
     "Data": "Sábado, 13 de junho de 2026",
     "Placar A": 2,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Austrália"
   },
   {
     "Seleção A": "Holanda",
@@ -85,7 +91,8 @@
     "Data": "Domingo, 14 de junho de 2026",
     "Placar A": 1,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Costa do Marfim"
   },
   {
     "Seleção A": "Suécia",
@@ -93,7 +100,8 @@
     "Data": "Domingo, 14 de junho de 2026",
     "Placar A": 5,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Suécia"
   },
   {
     "Seleção A": "Espanha",
@@ -133,7 +141,8 @@
     "Data": "Terça-feira, 16 de junho de 2026",
     "Placar A": 3,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "França"
   },
   {
     "Seleção A": "Iraque",
@@ -141,7 +150,8 @@
     "Data": "Terça-feira, 16 de junho de 2026",
     "Placar A": 1,
     "Placar B": 4,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Noruega"
   },
   {
     "Seleção A": "Argentina",
@@ -149,7 +159,8 @@
     "Data": "Terça-feira, 16 de junho de 2026",
     "Placar A": 3,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Argentina"
   },
   {
     "Seleção A": "Áustria",
@@ -157,7 +168,8 @@
     "Data": "Terça-feira, 16 de junho de 2026",
     "Placar A": 3,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Áustria"
   },
   {
     "Seleção A": "Portugal",
@@ -173,7 +185,8 @@
     "Data": "Quarta-feira, 17 de junho de 2026",
     "Placar A": 4,
     "Placar B": 2,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Inglaterra"
   },
   {
     "Seleção A": "Gana",
@@ -181,7 +194,8 @@
     "Data": "Quarta-feira, 17 de junho de 2026",
     "Placar A": 1,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Gana"
   },
   {
     "Seleção A": "Uzbequistão",
@@ -189,7 +203,8 @@
     "Data": "Quarta-feira, 17 de junho de 2026",
     "Placar A": 1,
     "Placar B": 3,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Colômbia"
   },
   {
     "Seleção A": "Tcheca",
@@ -205,7 +220,8 @@
     "Data": "Quinta-feira, 18 de junho de 2026",
     "Placar A": 4,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Suíça"
   },
   {
     "Seleção A": "Canadá",
@@ -213,7 +229,8 @@
     "Data": "Quinta-feira, 18 de junho de 2026",
     "Placar A": 6,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Canadá"
   },
   {
     "Seleção A": "México",
@@ -221,7 +238,8 @@
     "Data": "Quinta-feira, 18 de junho de 2026",
     "Placar A": 1,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "México"
   },
   {
     "Seleção A": "Estados Unidos",
@@ -229,7 +247,8 @@
     "Data": "Sexta-feira, 19 de junho de 2026",
     "Placar A": 2,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Estados Unidos"
   },
   {
     "Seleção A": "Brasil",
@@ -237,7 +256,8 @@
     "Data": "Sexta-feira, 19 de junho de 2026",
     "Placar A": 3,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Brasil"
   },
   {
     "Seleção A": "Escócia",
@@ -245,7 +265,8 @@
     "Data": "Sexta-feira, 19 de junho de 2026",
     "Placar A": 0,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Marrocos"
   },
   {
     "Seleção A": "Turquia",
@@ -253,7 +274,8 @@
     "Data": "Sexta-feira, 19 de junho de 2026",
     "Placar A": 0,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Paraguai"
   },
   {
     "Seleção A": "Holanda",
@@ -261,7 +283,8 @@
     "Data": "Sábado 20 de junho de 2026",
     "Placar A": 5,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Holanda"
   },
   {
     "Seleção A": "Alemanha",
@@ -269,7 +292,8 @@
     "Data": "Sábado 20 de junho de 2026",
     "Placar A": 2,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Alemanha"
   },
   {
     "Seleção A": "Equador",
@@ -285,7 +309,8 @@
     "Data": "Sábado 20 de junho de 2026",
     "Placar A": 0,
     "Placar B": 4,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Japão"
   },
   {
     "Seleção A": "Espanha",
@@ -293,7 +318,8 @@
     "Data": "Domingo, 21 de junho de 2026",
     "Placar A": 4,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Espanha"
   },
   {
     "Seleção A": "Bélgica",
@@ -309,7 +335,8 @@
     "Data": "Domingo, 21 de junho de 2026",
     "Placar A": 1,
     "Placar B": 3,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Egito"
   },
   {
     "Seleção A": "Uruguai",
@@ -325,7 +352,8 @@
     "Data": "Segunda-feira, 22 de junho de 2026",
     "Placar A": 2,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Argentina"
   },
   {
     "Seleção A": "França",
@@ -333,7 +361,8 @@
     "Data": "Segunda-feira, 22 de junho de 2026",
     "Placar A": 3,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "França"
   },
   {
     "Seleção A": "Noruega",
@@ -341,7 +370,8 @@
     "Data": "Segunda-feira, 22 de junho de 2026",
     "Placar A": 3,
     "Placar B": 2,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Noruega"
   },
   {
     "Seleção A": "Jordânia",
@@ -349,7 +379,8 @@
     "Data": "Segunda-feira, 22 de junho de 2026",
     "Placar A": 1,
     "Placar B": 2,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Argélia"
   },
   {
     "Seleção A": "Portugal",
@@ -357,7 +388,8 @@
     "Data": "Terça-feira, 23 de junho de 2026",
     "Placar A": 5,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Portugal"
   },
   {
     "Seleção A": "Inglaterra",
@@ -373,7 +405,8 @@
     "Data": "Terça-feira, 23 de junho de 2026",
     "Placar A": 0,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Croácia"
   },
   {
     "Seleção A": "Colômbia",
@@ -381,7 +414,8 @@
     "Data": "Terça-feira, 23 de junho de 2026",
     "Placar A": 1,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Colômbia"
   },
   {
     "Seleção A": "Suíça",
@@ -389,7 +423,8 @@
     "Data": "Quarta-feira, 24 de junho de 2026",
     "Placar A": 2,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Suíça"
   },
   {
     "Seleção A": "Bósnia e Herzegovina",
@@ -397,7 +432,8 @@
     "Data": "Quarta-feira, 24 de junho de 2026",
     "Placar A": 3,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Bósnia e Herzegovina"
   },
   {
     "Seleção A": "Escócia",
@@ -405,7 +441,8 @@
     "Data": "Quarta-feira, 24 de junho de 2026",
     "Placar A": 0,
     "Placar B": 3,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Brasil"
   },
   {
     "Seleção A": "Marrocos",
@@ -413,7 +450,8 @@
     "Data": "Quarta-feira, 24 de junho de 2026",
     "Placar A": 4,
     "Placar B": 2,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Marrocos"
   },
   {
     "Seleção A": "Tcheca",
@@ -421,7 +459,8 @@
     "Data": "Quarta-feira, 24 de junho de 2026",
     "Placar A": 0,
     "Placar B": 3,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "México"
   },
   {
     "Seleção A": "África do Sul",
@@ -429,7 +468,8 @@
     "Data": "Quarta-feira, 24 de junho de 2026",
     "Placar A": 1,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "África do Sul"
   },
   {
     "Seleção A": "Curaçau",
@@ -437,7 +477,8 @@
     "Data": "Quinta-feira, 25 de junho de 2026",
     "Placar A": 0,
     "Placar B": 2,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Costa do Marfim"
   },
   {
     "Seleção A": "Equador",
@@ -445,7 +486,8 @@
     "Data": "Quinta-feira, 25 de junho de 2026",
     "Placar A": 2,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Equador"
   },
   {
     "Seleção A": "Japão",
@@ -461,7 +503,8 @@
     "Data": "Quinta-feira, 25 de junho de 2026",
     "Placar A": 1,
     "Placar B": 3,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Holanda"
   },
   {
     "Seleção A": "Turquia",
@@ -469,7 +512,8 @@
     "Data": "Quinta-feira, 25 de junho de 2026",
     "Placar A": 3,
     "Placar B": 2,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Turquia"
   },
   {
     "Seleção A": "Paraguai",
@@ -485,7 +529,8 @@
     "Data": "Sexta-feira, 26 de junho de 2026",
     "Placar A": 5,
     "Placar B": 0,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Senegal"
   },
   {
     "Seleção A": "Noruega",
@@ -493,7 +538,8 @@
     "Data": "Sexta-feira, 26 de junho de 2026",
     "Placar A": 1,
     "Placar B": 4,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "França"
   },
   {
     "Seleção A": "Cabo Verde",
@@ -509,7 +555,8 @@
     "Data": "Sexta-feira, 26 de junho de 2026",
     "Placar A": 0,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Espanha"
   },
   {
     "Seleção A": "Egito",
@@ -525,7 +572,8 @@
     "Data": "Sexta-feira, 26 de junho de 2026",
     "Placar A": 1,
     "Placar B": 5,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Bélgica"
   },
   {
     "Seleção A": "Colômbia",
@@ -541,7 +589,8 @@
     "Data": "Sábado, 27 de junho de 2026",
     "Placar A": 3,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "RD do Congo"
   },
   {
     "Seleção A": "Croácia",
@@ -549,7 +598,8 @@
     "Data": "Sábado, 27 de junho de 2026",
     "Placar A": 2,
     "Placar B": 1,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Croácia"
   },
   {
     "Seleção A": "Panamá",
@@ -557,7 +607,8 @@
     "Data": "Sábado, 27 de junho de 2026",
     "Placar A": 0,
     "Placar B": 2,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Inglaterra"
   },
   {
     "Seleção A": "Argélia",
@@ -573,7 +624,8 @@
     "Data": "Sábado, 27 de junho de 2026",
     "Placar A": 1,
     "Placar B": 3,
-    "Status": "encerrado"
+    "Status": "encerrado",
+    "Vencedor": "Argentina"
   },
   {
     "Seleção A": "África do Sul",
@@ -583,5 +635,14 @@
     "Placar B": 1,
     "Status": "encerrado",
     "Vencedor": "Canadá"
+  },
+  {
+    "Seleção A": "Brasil",
+    "Seleção B": "Japão",
+    "Data": "Segunda-feira, 29 de junho de 2026",
+    "Placar A": 2,
+    "Placar B": 1,
+    "Status": "encerrado",
+    "Vencedor": "Brasil"
   }
 ]

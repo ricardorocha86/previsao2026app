@@ -92,6 +92,13 @@ def dixon_coles_correction(gols_casa, gols_fora, lambda_casa, lambda_fora, rho=-
         return 1 - rho
     return 1.0
 
+
+def penalty_win_probability_from_share(share):
+    """Probabilidade de vencer nos penaltis: 40% fixo + 20% pelo share de forca."""
+    share = min(1.0, max(0.0, float(share)))
+    return 0.4 + 0.2 * share
+
+
 def elo_to_forca(elo, k_scale=400):
     """Transforma o rating Elo em Força exponencial."""
     return 10 ** (elo / k_scale)
@@ -184,8 +191,9 @@ def simular_jogo_simples(elo_a, elo_b, mata_mata=False, media_gols=MEDIA_GOLS_CO
     else:
         if not mata_mata:
             return 1, 1, gols_a, gols_b, fp_a, fp_b, 2
-        # No mata-mata, decide nos pênaltis via share de força
-        vence_a = np.random.random() < share_a
+        # No mata-mata, pênaltis: 40% fixo + 20% dividido pelo share de força
+        prob_penaltis_a = penalty_win_probability_from_share(share_a)
+        vence_a = np.random.random() < prob_penaltis_a
         return (0, 0, gols_a, gols_b, fp_a, fp_b, 0 if vence_a else 1)
 
 # ============================================================
@@ -227,9 +235,10 @@ class PoissonMatchSimulator(BaseMatchSimulator):
         if gols_a_total > gols_b_total: return gols_a_total, gols_b_total, 1
         if gols_b_total > gols_a_total: return gols_a_total, gols_b_total, 2
             
-        # Pênaltis baseados no share de força
+        # Pênaltis: 40% fixo + 20% dividido pelo share de força
         share_a = float(match_data["share_a"])
-        return gols_a_total, gols_b_total, 1 if rng.random() < share_a else 2
+        prob_penaltis_a = penalty_win_probability_from_share(share_a)
+        return gols_a_total, gols_b_total, 1 if rng.random() < prob_penaltis_a else 2
 
 def ordenar_grupo_oficial(tabela_grupo, strengths, rng):
     """Ordenação FIFA: Pontos -> Confronto Direto -> Saldo -> Gols -> Fair Play."""

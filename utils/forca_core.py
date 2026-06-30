@@ -22,7 +22,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from experimento_calibracao_mercado import ODDS_PATH, canonical_team_key, load_market_target
 from utils import config as app_config
-from utils.simulador_oficial import dixon_coles_correction, parse_world_cup_score
+from utils.simulador_oficial import (
+    dixon_coles_correction,
+    parse_world_cup_score,
+    penalty_win_probability_from_share,
+)
 
 
 DEFAULT_WEIGHT_FIFA = getattr(app_config, "DEFAULT_WEIGHT_FIFA", 0.05)
@@ -395,9 +399,8 @@ def compute_knockout_probabilities(match: dict[str, float | np.ndarray]) -> dict
     Reproduz analiticamente o que ``PoissonMatchSimulator.simulate_match`` faz com
     ``mata_mata=True``: empate no tempo regular vai para prorrogação (gols extras
     ``~ Poisson(lambda * 0.3)`` independentes, sem Dixon-Coles); persistindo o empate,
-    a decisão por pênaltis segue o ``share`` de força. Como num empate os gols do
-    tempo regular são iguais, o vencedor da prorrogação depende apenas de quem marca
-    mais nela.
+    a decisão por pênaltis usa 40% fixo para cada time mais 20% dividido
+    proporcionalmente pelo ``share`` de força.
 
     Recebe o dicionário de ``compute_match_probabilities`` e devolve, entre outros,
     ``advance_a``/``advance_b`` (que somam 1.0).
@@ -406,6 +409,8 @@ def compute_knockout_probabilities(match: dict[str, float | np.ndarray]) -> dict
     lambda_b_extra = float(match["lambda_b"]) * 0.3
     share_a = float(match["share_a"])
     share_b = float(match["share_b"])
+    penalty_a = penalty_win_probability_from_share(share_a)
+    penalty_b = penalty_win_probability_from_share(share_b)
     win_a = float(match["win_a"])
     win_b = float(match["win_b"])
     draw = float(match["draw"])
@@ -423,8 +428,8 @@ def compute_knockout_probabilities(match: dict[str, float | np.ndarray]) -> dict
     extra_draw = float(np.trace(extra_matrix))            # gols_a == gols_b
 
     # Avanço condicionado a empate no tempo regular: prorrogação + pênaltis.
-    adv_given_draw_a = extra_win_a + extra_draw * share_a
-    adv_given_draw_b = extra_win_b + extra_draw * share_b
+    adv_given_draw_a = extra_win_a + extra_draw * penalty_a
+    adv_given_draw_b = extra_win_b + extra_draw * penalty_b
 
     advance_a = win_a + draw * adv_given_draw_a
     advance_b = win_b + draw * adv_given_draw_b
@@ -433,6 +438,8 @@ def compute_knockout_probabilities(match: dict[str, float | np.ndarray]) -> dict
         "extra_win_a": extra_win_a,
         "extra_draw": extra_draw,
         "extra_win_b": extra_win_b,
+        "penalty_a": penalty_a,
+        "penalty_b": penalty_b,
         "adv_given_draw_a": adv_given_draw_a,
         "adv_given_draw_b": adv_given_draw_b,
         "advance_a": advance_a,

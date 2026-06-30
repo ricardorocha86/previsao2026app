@@ -40,6 +40,7 @@ with st.sidebar:
     st.markdown("#### Tipo de Jogo")
     modo_mata_mata = st.toggle(
         "Modo mata-mata",
+        value=True,
         key="partida_modo_mata_mata",
     )
 
@@ -444,8 +445,8 @@ else:
             extra_win_a = float(knockout["extra_win_a"])
             extra_draw = float(knockout["extra_draw"])
             extra_win_b = float(knockout["extra_win_b"])
-            penalty_a = float(match["share_a"])
-            penalty_b = float(match["share_b"])
+            penalty_a = float(knockout["penalty_a"])
+            penalty_b = float(knockout["penalty_b"])
             unconditional_extra_a = regular_draw * extra_win_a
             unconditional_extra_draw = regular_draw * extra_draw
             unconditional_extra_b = regular_draw * extra_win_b

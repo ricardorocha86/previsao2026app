@@ -12,6 +12,7 @@ from utils.simulador_oficial import (
     dixon_coles_correction,
     ordenar_grupo_oficial,
     parse_world_cup_score,
+    penalty_win_probability_from_share,
 )
 
 
@@ -176,7 +177,8 @@ def simulate_match(
         winner = team_b
     elif knockout:
         # Prorrogacao: 30% da media de gols original, identico ao simulador oficial
-        # (PoissonMatchSimulator). Persistindo o empate, decide nos penaltis pelo share.
+        # (PoissonMatchSimulator). Persistindo o empate, decide nos penaltis
+        # com 40% fixo + 20% pelo share de forca.
         extra_time = True
         goals_a += int(rng.poisson(float(probabilities["lambda_a"]) * 0.3))
         goals_b += int(rng.poisson(float(probabilities["lambda_b"]) * 0.3))
@@ -185,7 +187,8 @@ def simulate_match(
         elif goals_b > goals_a:
             winner = team_b
         else:
-            penalty_winner = team_a if rng.random() < probabilities["share_a"] else team_b
+            prob_penaltis_a = penalty_win_probability_from_share(probabilities["share_a"])
+            penalty_winner = team_a if rng.random() < prob_penaltis_a else team_b
             winner = penalty_winner
 
     return {

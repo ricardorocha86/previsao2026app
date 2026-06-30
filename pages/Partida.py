@@ -151,6 +151,164 @@ st.markdown(
         font-size: 2.25rem;
         text-align: center;
     }
+
+    .knockout-bar-stack {
+        font-family: 'Exo 2', sans-serif;
+        margin: 1rem 0 1.2rem 0;
+    }
+
+    .knockout-bars {
+        display: flex;
+        flex-direction: column;
+        gap: 0.34rem;
+    }
+
+    .knockout-mini-bar,
+    .knockout-path-bar {
+        background: #e0e0e0;
+        display: flex;
+        overflow: hidden;
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .knockout-bar-segment {
+        align-items: center;
+        color: rgba(255,255,255,0.94);
+        display: flex;
+        font-size: 0.68rem;
+        font-weight: 900;
+        justify-content: center;
+        line-height: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        white-space: nowrap;
+    }
+
+    .knockout-mini-bar {
+        border-radius: 999px;
+        height: 18px;
+    }
+
+    .knockout-mini-bar--advance {
+        height: 18px;
+    }
+
+    .knockout-marker-stage {
+        height: 54px;
+        margin: 0.05rem 0 -0.04rem 0;
+        position: relative;
+    }
+
+    .knockout-marker {
+        border-left: 1px solid;
+        border-right: 1px solid;
+        border-top: 1px solid;
+        position: absolute;
+    }
+
+    .knockout-marker::after {
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        content: "";
+        left: calc(50% - 4px);
+        position: absolute;
+        top: 13px;
+    }
+
+    .knockout-marker--draw {
+        border-color: #9a9a9a;
+        top: 4px;
+        height: 34px;
+        z-index: 1;
+    }
+
+    .knockout-marker--draw::after {
+        border-top: 6px solid #9a9a9a;
+    }
+
+    .knockout-marker--penalty {
+        border-color: #54a8c8;
+        top: 24px;
+        height: 28px;
+        z-index: 2;
+    }
+
+    .knockout-marker--penalty::after {
+        display: none;
+    }
+
+    .knockout-marker--penalty .knockout-marker-label {
+        box-sizing: border-box;
+        left: 50%;
+        min-width: max-content;
+        text-align: center;
+        transform: translateX(-50%);
+        width: auto;
+    }
+
+    .knockout-marker-label {
+        background: #ffffff;
+        border: 1px solid currentColor;
+        border-radius: 999px;
+        font-size: 0.67rem;
+        font-weight: 900;
+        left: 50%;
+        line-height: 1;
+        padding: 0.18rem 0.42rem;
+        position: absolute;
+        top: -8px;
+        transform: translateX(-50%);
+        white-space: nowrap;
+    }
+
+    .knockout-path-bar {
+        border-radius: 20px;
+        height: 38px;
+        margin: 0;
+    }
+
+    .knockout-path-segment {
+        align-items: center;
+        color: rgba(255,255,255,0.95);
+        display: flex;
+        font-size: 0.72rem;
+        font-weight: 900;
+        justify-content: center;
+        line-height: 1;
+        min-width: 0;
+        overflow: hidden;
+        position: relative;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+        white-space: nowrap;
+    }
+
+    .knockout-conditional {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem;
+        margin: 0.62rem 0 1.1rem 0;
+        font-family: 'Exo 2', sans-serif;
+    }
+
+    .knockout-conditional-card {
+        background: #ffffff;
+        border: 1px solid #e4e4e4;
+        border-radius: 8px;
+        color: #555760;
+        font-size: 0.74rem;
+        font-weight: 700;
+        line-height: 1.32;
+        padding: 0.58rem 0.68rem;
+    }
+
+    .knockout-conditional-title {
+        color: #34343c;
+        font-size: 0.76rem;
+        font-weight: 900;
+        margin-bottom: 0.22rem;
+    }
+
 </style>
 """,
     unsafe_allow_html=True,
@@ -280,6 +438,19 @@ else:
             knockout = compute_knockout_probabilities(match)
             advance_a = float(knockout["advance_a"])
             advance_b = float(knockout["advance_b"])
+            regular_win_a = float(match["win_a"])
+            regular_draw = float(match["draw"])
+            regular_win_b = float(match["win_b"])
+            extra_win_a = float(knockout["extra_win_a"])
+            extra_draw = float(knockout["extra_draw"])
+            extra_win_b = float(knockout["extra_win_b"])
+            penalty_a = float(match["share_a"])
+            penalty_b = float(match["share_b"])
+            unconditional_extra_a = regular_draw * extra_win_a
+            unconditional_extra_draw = regular_draw * extra_draw
+            unconditional_extra_b = regular_draw * extra_win_b
+            unconditional_penalty_a = unconditional_extra_draw * penalty_a
+            unconditional_penalty_b = unconditional_extra_draw * penalty_b
 
             col_adv_1, col_adv_2 = st.columns(2)
             with col_adv_1:
@@ -305,9 +476,42 @@ else:
 
             st.markdown(
                 f"""
-<div style="background: #e0e0e0; border-radius: 20px; height: 36px; display: flex; overflow: hidden; margin: 1rem 0 1.5rem 0; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);">
-    <div style="width: {advance_a * 100:.2f}%; background: #209927;"></div>
-    <div style="width: {advance_b * 100:.2f}%; background: #035C88;"></div>
+<div class="knockout-bar-stack">
+    <div class="knockout-bars">
+        <div class="knockout-marker-stage">
+            <div class="knockout-marker knockout-marker--draw" style="left: {regular_win_a * 100:.2f}%; width: {regular_draw * 100:.2f}%;">
+                <span class="knockout-marker-label" style="color:#777;">Empate {regular_draw:.1%}</span>
+            </div>
+            <div class="knockout-marker knockout-marker--penalty" style="left: {(regular_win_a + unconditional_extra_a) * 100:.2f}%; width: {unconditional_extra_draw * 100:.2f}%;">
+                <span class="knockout-marker-label knockout-marker-label--penalty" style="color:#1682b7;">Pênaltis {unconditional_extra_draw:.1%}</span>
+            </div>
+        </div>
+        <div class="knockout-path-bar" title="Caminhos de avanço no mata-mata">
+            <div class="knockout-path-segment" title="{home_team} nos 90 min: {regular_win_a:.1%}" style="width: {regular_win_a * 100:.2f}%; background: #16751f;">{regular_win_a:.1%}</div>
+            <div class="knockout-path-segment" title="{home_team} na prorrogação: {unconditional_extra_a:.1%}" style="width: {unconditional_extra_a * 100:.2f}%; background: #32b53a;">{unconditional_extra_a:.1%}</div>
+            <div class="knockout-path-segment" title="{home_team} nos pênaltis: {unconditional_penalty_a:.1%}" style="width: {unconditional_penalty_a * 100:.2f}%; background: #8dde76;">{unconditional_penalty_a:.1%}</div>
+            <div class="knockout-path-segment" title="{away_team} nos pênaltis: {unconditional_penalty_b:.1%}" style="width: {unconditional_penalty_b * 100:.2f}%; background: #7bc4e8;">{unconditional_penalty_b:.1%}</div>
+            <div class="knockout-path-segment" title="{away_team} na prorrogação: {unconditional_extra_b:.1%}" style="width: {unconditional_extra_b * 100:.2f}%; background: #1682b7;">{unconditional_extra_b:.1%}</div>
+            <div class="knockout-path-segment" title="{away_team} nos 90 min: {regular_win_b:.1%}" style="width: {regular_win_b * 100:.2f}%; background: #034c73;">{regular_win_b:.1%}</div>
+        </div>
+        <div class="knockout-mini-bar knockout-mini-bar--advance" title="Probabilidade final de avanço">
+            <div class="knockout-bar-segment" title="{home_team} avança: {advance_a:.1%}" style="width: {advance_a * 100:.2f}%; background: #209927;">{advance_a:.1%}</div>
+            <div class="knockout-bar-segment" title="{away_team} avança: {advance_b:.1%}" style="width: {advance_b * 100:.2f}%; background: #035C88;">{advance_b:.1%}</div>
+        </div>
+    </div>
+<div class="knockout-conditional">
+    <div class="knockout-conditional-card">
+        <div class="knockout-conditional-title">Dado empate nos 90 min</div>
+        {home_team} vence na prorrogação: {extra_win_a:.1%}<br>
+        Pênaltis: {extra_draw:.1%}<br>
+        {away_team} vence na prorrogação: {extra_win_b:.1%}
+    </div>
+    <div class="knockout-conditional-card">
+        <div class="knockout-conditional-title">Dado que foi para pênaltis</div>
+        {home_team} avança: {penalty_a:.1%}<br>
+        {away_team} avança: {penalty_b:.1%}
+    </div>
+</div>
 </div>
 """,
                 unsafe_allow_html=True,

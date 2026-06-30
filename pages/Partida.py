@@ -437,21 +437,25 @@ else:
 
         if modo_mata_mata:
             knockout = compute_knockout_probabilities(match)
-            advance_a = float(knockout["advance_a"])
-            advance_b = float(knockout["advance_b"])
             regular_win_a = float(match["win_a"])
             regular_draw = float(match["draw"])
             regular_win_b = float(match["win_b"])
             extra_win_a = float(knockout["extra_win_a"])
             extra_draw = float(knockout["extra_draw"])
             extra_win_b = float(knockout["extra_win_b"])
-            penalty_a = float(knockout["penalty_a"])
-            penalty_b = float(knockout["penalty_b"])
+            penalty_a = float(knockout.get("penalty_a", 0.4 + 0.2 * float(match["share_a"])))
+            penalty_b = float(knockout.get("penalty_b", 0.4 + 0.2 * float(match["share_b"])))
             unconditional_extra_a = regular_draw * extra_win_a
             unconditional_extra_draw = regular_draw * extra_draw
             unconditional_extra_b = regular_draw * extra_win_b
             unconditional_penalty_a = unconditional_extra_draw * penalty_a
             unconditional_penalty_b = unconditional_extra_draw * penalty_b
+            if "penalty_a" in knockout and "penalty_b" in knockout:
+                advance_a = float(knockout["advance_a"])
+                advance_b = float(knockout["advance_b"])
+            else:
+                advance_a = regular_win_a + unconditional_extra_a + unconditional_penalty_a
+                advance_b = regular_win_b + unconditional_extra_b + unconditional_penalty_b
 
             col_adv_1, col_adv_2 = st.columns(2)
             with col_adv_1:

@@ -698,5 +698,14 @@
     "Placar B": 1,
     "Status": "encerrado",
     "Vencedor": "Inglaterra"
+  },
+  {
+    "Seleção A": "Bélgica",
+    "Seleção B": "Senegal",
+    "Data": "Quarta-feira, 1 de julho de 2026",
+    "Placar A": 3,
+    "Placar B": 2,
+    "Status": "encerrado",
+    "Vencedor": "Bélgica"
   }
 ]

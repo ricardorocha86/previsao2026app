@@ -671,5 +671,14 @@
     "Placar B": 2,
     "Status": "encerrado",
     "Vencedor": "Noruega"
+  },
+  {
+    "Seleção A": "França",
+    "Seleção B": "Suécia",
+    "Data": "Terça-feira, 30 de junho de 2026",
+    "Placar A": 3,
+    "Placar B": 0,
+    "Status": "encerrado",
+    "Vencedor": "França"
   }
 ]

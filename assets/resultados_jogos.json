@@ -689,5 +689,14 @@
     "Placar B": 0,
     "Status": "encerrado",
     "Vencedor": "México"
+  },
+  {
+    "Seleção A": "Inglaterra",
+    "Seleção B": "RD do Congo",
+    "Data": "Quarta-feira, 1 de julho de 2026",
+    "Placar A": 2,
+    "Placar B": 1,
+    "Status": "encerrado",
+    "Vencedor": "Inglaterra"
   }
 ]

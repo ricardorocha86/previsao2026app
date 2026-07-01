@@ -680,5 +680,14 @@
     "Placar B": 0,
     "Status": "encerrado",
     "Vencedor": "França"
+  },
+  {
+    "Seleção A": "México",
+    "Seleção B": "Equador",
+    "Data": "Terça-feira, 30 de junho de 2026",
+    "Placar A": 2,
+    "Placar B": 0,
+    "Status": "encerrado",
+    "Vencedor": "México"
   }
 ]

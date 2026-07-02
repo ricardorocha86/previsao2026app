@@ -707,5 +707,14 @@
     "Placar B": 2,
     "Status": "encerrado",
     "Vencedor": "Bélgica"
+  },
+  {
+    "Seleção A": "Estados Unidos",
+    "Seleção B": "Bósnia e Herzegovina",
+    "Data": "Quarta-feira, 1 de julho de 2026",
+    "Placar A": 2,
+    "Placar B": 0,
+    "Status": "encerrado",
+    "Vencedor": "Estados Unidos"
   }
 ]

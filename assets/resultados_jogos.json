@@ -716,5 +716,14 @@
     "Placar B": 0,
     "Status": "encerrado",
     "Vencedor": "Estados Unidos"
+  },
+  {
+    "Seleção A": "Espanha",
+    "Seleção B": "Áustria",
+    "Data": "Quinta-feira, 2 de julho de 2026",
+    "Placar A": 3,
+    "Placar B": 0,
+    "Status": "encerrado",
+    "Vencedor": "Espanha"
   }
 ]

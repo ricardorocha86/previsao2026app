@@ -725,5 +725,23 @@
     "Placar B": 0,
     "Status": "encerrado",
     "Vencedor": "Espanha"
+  },
+  {
+    "Seleção A": "Portugal",
+    "Seleção B": "Croácia",
+    "Data": "Quinta-feira, 2 de julho de 2026",
+    "Placar A": 2,
+    "Placar B": 1,
+    "Status": "encerrado",
+    "Vencedor": "Portugal"
+  },
+  {
+    "Seleção A": "Suíça",
+    "Seleção B": "Argélia",
+    "Data": "Quinta-feira, 2 de julho de 2026",
+    "Placar A": 2,
+    "Placar B": 0,
+    "Status": "encerrado",
+    "Vencedor": "Suíça"
   }
 ]

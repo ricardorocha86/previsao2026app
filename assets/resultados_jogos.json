@@ -770,5 +770,14 @@
     "Placar B": 1,
     "Status": "encerrado",
     "Vencedor": "Egito"
+  },
+  {
+    "Seleção A": "Canadá",
+    "Seleção B": "Marrocos",
+    "Data": "Sábado, 4 de julho de 2026",
+    "Placar A": 0,
+    "Placar B": 3,
+    "Status": "encerrado",
+    "Vencedor": "Marrocos"
   }
 ]

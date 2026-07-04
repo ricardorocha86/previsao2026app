@@ -637,15 +637,6 @@
     "Vencedor": "Canadá"
   },
   {
-    "Seleção A": "Brasil",
-    "Seleção B": "Japão",
-    "Data": "Segunda-feira, 29 de junho de 2026",
-    "Placar A": 2,
-    "Placar B": 1,
-    "Status": "encerrado",
-    "Vencedor": "Brasil"
-  },
-  {
     "Seleção A": "Alemanha",
     "Seleção B": "Paraguai",
     "Data": "Segunda-feira, 29 de junho de 2026",
@@ -664,13 +655,13 @@
     "Vencedor": "Marrocos"
   },
   {
-    "Seleção A": "Costa do Marfim",
-    "Seleção B": "Noruega",
-    "Data": "Terça-feira, 30 de junho de 2026",
-    "Placar A": 1,
-    "Placar B": 2,
+    "Seleção A": "Brasil",
+    "Seleção B": "Japão",
+    "Data": "Segunda-feira, 29 de junho de 2026",
+    "Placar A": 2,
+    "Placar B": 1,
     "Status": "encerrado",
-    "Vencedor": "Noruega"
+    "Vencedor": "Brasil"
   },
   {
     "Seleção A": "França",
@@ -680,6 +671,15 @@
     "Placar B": 0,
     "Status": "encerrado",
     "Vencedor": "França"
+  },
+  {
+    "Seleção A": "Costa do Marfim",
+    "Seleção B": "Noruega",
+    "Data": "Terça-feira, 30 de junho de 2026",
+    "Placar A": 1,
+    "Placar B": 2,
+    "Status": "encerrado",
+    "Vencedor": "Noruega"
   },
   {
     "Seleção A": "México",
@@ -700,15 +700,6 @@
     "Vencedor": "Inglaterra"
   },
   {
-    "Seleção A": "Bélgica",
-    "Seleção B": "Senegal",
-    "Data": "Quarta-feira, 1 de julho de 2026",
-    "Placar A": 3,
-    "Placar B": 2,
-    "Status": "encerrado",
-    "Vencedor": "Bélgica"
-  },
-  {
     "Seleção A": "Estados Unidos",
     "Seleção B": "Bósnia e Herzegovina",
     "Data": "Quarta-feira, 1 de julho de 2026",
@@ -718,13 +709,13 @@
     "Vencedor": "Estados Unidos"
   },
   {
-    "Seleção A": "Espanha",
-    "Seleção B": "Áustria",
-    "Data": "Quinta-feira, 2 de julho de 2026",
+    "Seleção A": "Bélgica",
+    "Seleção B": "Senegal",
+    "Data": "Quarta-feira, 1 de julho de 2026",
     "Placar A": 3,
-    "Placar B": 0,
+    "Placar B": 2,
     "Status": "encerrado",
-    "Vencedor": "Espanha"
+    "Vencedor": "Bélgica"
   },
   {
     "Seleção A": "Portugal",
@@ -736,6 +727,15 @@
     "Vencedor": "Portugal"
   },
   {
+    "Seleção A": "Espanha",
+    "Seleção B": "Áustria",
+    "Data": "Quinta-feira, 2 de julho de 2026",
+    "Placar A": 3,
+    "Placar B": 0,
+    "Status": "encerrado",
+    "Vencedor": "Espanha"
+  },
+  {
     "Seleção A": "Suíça",
     "Seleção B": "Argélia",
     "Data": "Quinta-feira, 2 de julho de 2026",
@@ -743,15 +743,6 @@
     "Placar B": 0,
     "Status": "encerrado",
     "Vencedor": "Suíça"
-  },
-  {
-    "Seleção A": "Austrália",
-    "Seleção B": "Egito",
-    "Data": "Sexta-feira, 3 de julho de 2026",
-    "Placar A": 1,
-    "Placar B": 1,
-    "Status": "encerrado",
-    "Vencedor": "Egito"
   },
   {
     "Seleção A": "Argentina",
@@ -770,5 +761,14 @@
     "Placar B": 0,
     "Status": "encerrado",
     "Vencedor": "Colômbia"
+  },
+  {
+    "Seleção A": "Austrália",
+    "Seleção B": "Egito",
+    "Data": "Sexta-feira, 3 de julho de 2026",
+    "Placar A": 1,
+    "Placar B": 1,
+    "Status": "encerrado",
+    "Vencedor": "Egito"
   }
 ]

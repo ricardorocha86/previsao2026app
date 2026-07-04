@@ -108,7 +108,8 @@ def build_match_cache(team_keys, strengths, media_gols, usar_dc, rho):
 
 
 def simulate_and_count_champions(groups, strengths, match_cache, n_sims, rng=None,
-                                 locked_group_results=None):
+                                 locked_group_results=None,
+                                 locked_knockout_results=None):
     """Simula n_sims copas e retorna a contagem de títulos por seleção."""
     if rng is None:
         rng = np.random.default_rng()
@@ -117,8 +118,14 @@ def simulate_and_count_champions(groups, strengths, match_cache, n_sims, rng=Non
     champion_counts = {team_key: 0 for team_key in strengths}
 
     for _ in range(n_sims):
-        history = simulate_one_cup_oficial(groups, strengths, rng, match_simulator,
-                                           locked_group_results=locked_group_results)
+        history = simulate_one_cup_oficial(
+            groups,
+            strengths,
+            rng,
+            match_simulator,
+            locked_group_results=locked_group_results,
+            locked_knockout_results=locked_knockout_results,
+        )
         for team_key, stages in history.items():
             if stages.get("Campeao", 0) == 1:
                 champion_counts[team_key] += 1
@@ -230,13 +237,17 @@ def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultado
     # Resultados oficiais já encerrados: trava os jogos de grupo na simulação,
     # exatamente como o app (página Simulação) faz ao reproduzir o mercado.
     locked_group_results = None
+    locked_knockout_results = None
     n_travados = 0
+    n_mata_mata_travados = 0
     if travar_resultados:
         from utils.resultados_oficiais import load_official_group_results
         oficiais = load_official_group_results(data["df"])
         locked_group_results = oficiais.locked_group_results
+        locked_knockout_results = oficiais.locked_knockout_results
         n_travados = oficiais.locked_match_count
-        print(f"   Resultados travados:     {n_travados} jogo(s) de grupo")
+        n_mata_mata_travados = oficiais.locked_knockout_count
+        print(f"   Resultados travados:     {n_travados} jogo(s) de grupo + {n_mata_mata_travados} mata-mata")
         if oficiais.unmatched_rows:
             print(f"   AVISO — linhas nao casadas: {oficiais.unmatched_rows}")
 
@@ -283,7 +294,8 @@ def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultado
         rng_iter = np.random.default_rng(SEED if usar_crn else SEED * 100_000 + iteration)
         champion_counts = simulate_and_count_champions(
             groups, strengths, match_cache, N_SIMS_POR_ITERACAO, rng=rng_iter,
-            locked_group_results=locked_group_results)
+            locked_group_results=locked_group_results,
+            locked_knockout_results=locked_knockout_results)
         
         # Probabilidades simuladas
         p_sim = np.array([champion_counts[tk] / N_SIMS_POR_ITERACAO for tk in team_keys])
@@ -371,7 +383,8 @@ def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultado
     champion_counts_final = simulate_and_count_champions(
         groups, strengths_final, match_cache_final, n_validacao,
         rng=np.random.default_rng(SEED - 1),
-        locked_group_results=locked_group_results)
+        locked_group_results=locked_group_results,
+        locked_knockout_results=locked_knockout_results)
     p_sim_final = np.array([champion_counts_final[tk] / n_validacao for tk in team_keys])
     metrics_final = compute_metrics(p_market, p_sim_final)
     
@@ -406,6 +419,8 @@ def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultado
             "crn": usar_crn,
             "travou_rodada_grupos": travar_resultados,
             "jogos_grupo_travados": n_travados,
+            "travou_mata_mata": travar_resultados,
+            "jogos_mata_mata_travados": n_mata_mata_travados,
         },
         "metricas_finais": metrics_final,
         "vetor_forca": {tk: float(forces[i]) for i, tk in enumerate(team_keys)},

@@ -295,13 +295,27 @@ def _eventos_para_jogos(eventos):
 
 
 # --- Casamento API x previsão ---------------------------------------------
-def montar_resultados(jogos_api, indice_previsoes):
+def montar_resultados(jogos_api, indice_previsoes, existentes=None):
     """
     Casa cada jogo encerrado da API a uma previsão e devolve (entradas, avisos).
     Cada entrada usa Data/nomes EXATOS da previsão e o placar da API.
     """
     entradas = []
     avisos = []
+    indice_existentes = {}
+    for ordem, existente in enumerate(existentes or []):
+        a = existente.get('Seleção A')
+        b = existente.get('Seleção B')
+        pt_a, pt_b = para_pt(a), para_pt(b)
+        if not pt_a or not pt_b:
+            continue
+        indice_existentes.setdefault(frozenset((pt_a, pt_b)), []).append({
+            'Seleção A': a,
+            'Seleção B': b,
+            'Data': existente.get('Data'),
+            'data_iso': _parse_data_pt(existente.get('Data')),
+            'ordem': ordem,
+        })
     for j in jogos_api:
         pt_home, pt_away = para_pt(j['home']), para_pt(j['away'])
         if not pt_home or not pt_away:
@@ -312,7 +326,10 @@ def montar_resultados(jogos_api, indice_previsoes):
         candidatos = indice_previsoes.get(frozenset((pt_home, pt_away)))
         data_api = datetime.strptime(j['date'], '%Y-%m-%d').date() if j.get('date') else None
         if not candidatos:
-            if data_api and data_api >= date(2026, 6, 28):
+            candidatos_existentes = indice_existentes.get(frozenset((pt_home, pt_away)))
+            if candidatos_existentes:
+                prev = sorted(candidatos_existentes, key=lambda x: x['ordem'])[0]
+            elif data_api and data_api >= date(2026, 6, 28):
                 prev = {
                     'Seleção A': pt_home,
                     'Seleção B': pt_away,
@@ -457,13 +474,13 @@ def main():
 
     # 2) Casa com as previsões (fonte de verdade de data + nomes)
     indice = carregar_indice_previsoes(args.previsoes)
-    novas, avisos = montar_resultados(jogos_api, indice)
+    base = carregar_resultados(args.saidas[0])
+    novas, avisos = montar_resultados(jogos_api, indice, existentes=base)
     for a in avisos:
         print(f'  AVISO: {a}')
     print(f'{len(novas)} jogos casados com o calendário.')
 
     # 3) Mescla com o que já está gravado (usa o 1o arquivo como base)
-    base = carregar_resultados(args.saidas[0])
     final, n_novas, n_atualizadas = mesclar(base, novas)
     print(f'Resultado: {n_novas} novo(s), {n_atualizadas} atualizado(s), '
           f'{len(final)} no total.')

@@ -788,5 +788,14 @@
     "Placar B": 1,
     "Status": "encerrado",
     "Vencedor": "França"
+  },
+  {
+    "Seleção A": "Brasil",
+    "Seleção B": "Noruega",
+    "Data": "Domingo, 5 de julho de 2026",
+    "Placar A": 1,
+    "Placar B": 2,
+    "Status": "encerrado",
+    "Vencedor": "Noruega"
   }
 ]

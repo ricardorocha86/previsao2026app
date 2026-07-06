@@ -797,5 +797,14 @@
     "Placar B": 2,
     "Status": "encerrado",
     "Vencedor": "Noruega"
+  },
+  {
+    "Seleção A": "México",
+    "Seleção B": "Inglaterra",
+    "Data": "Segunda-feira, 6 de julho de 2026",
+    "Placar A": 2,
+    "Placar B": 3,
+    "Status": "encerrado",
+    "Vencedor": "Inglaterra"
   }
 ]

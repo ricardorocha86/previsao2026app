@@ -806,5 +806,14 @@
     "Placar B": 3,
     "Status": "encerrado",
     "Vencedor": "Inglaterra"
+  },
+  {
+    "Seleção A": "Portugal",
+    "Seleção B": "Espanha",
+    "Data": "Segunda-feira, 6 de julho de 2026",
+    "Placar A": 0,
+    "Placar B": 1,
+    "Status": "encerrado",
+    "Vencedor": "Espanha"
   }
 ]

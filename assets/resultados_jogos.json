@@ -824,5 +824,14 @@
     "Placar B": 4,
     "Status": "encerrado",
     "Vencedor": "Bélgica"
+  },
+  {
+    "Seleção A": "Argentina",
+    "Seleção B": "Egito",
+    "Data": "Terça-feira, 7 de julho de 2026",
+    "Placar A": 3,
+    "Placar B": 2,
+    "Status": "encerrado",
+    "Vencedor": "Argentina"
   }
 ]

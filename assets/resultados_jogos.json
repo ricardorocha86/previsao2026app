@@ -833,5 +833,14 @@
     "Placar B": 2,
     "Status": "encerrado",
     "Vencedor": "Argentina"
+  },
+  {
+    "Seleção A": "Suíça",
+    "Seleção B": "Colômbia",
+    "Data": "Terça-feira, 7 de julho de 2026",
+    "Placar A": 0,
+    "Placar B": 0,
+    "Status": "encerrado",
+    "Vencedor": "Suíça"
   }
 ]

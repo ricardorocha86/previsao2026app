@@ -842,5 +842,14 @@
     "Placar B": 0,
     "Status": "encerrado",
     "Vencedor": "Suíça"
+  },
+  {
+    "Seleção A": "França",
+    "Seleção B": "Marrocos",
+    "Data": "Quinta-feira, 9 de julho de 2026",
+    "Placar A": 2,
+    "Placar B": 0,
+    "Status": "encerrado",
+    "Vencedor": "França"
   }
 ]

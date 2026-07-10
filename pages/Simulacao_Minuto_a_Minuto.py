@@ -37,6 +37,14 @@ from utils.simulador_oficial import penalty_win_probability_from_share
 # Duração de cada frame (ms) da animação Plotly disparada pelo botão ▶ Play.
 SPEED_MS = {"Lento": 550, "Normal": 210, "Rápido": 70, "Instantâneo": 18}
 
+# Barra de ferramentas do Plotly: manter só o download (câmera). O "tela cheia"
+# é botão do próprio Streamlit e continua disponível.
+PLOTLY_CONFIG = {
+    "displaylogo": False,
+    "modeBarButtonsToRemove": ["zoom2d", "pan2d", "select2d", "lasso2d",
+                               "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d"],
+}
+
 EXTRA_TIME_FACTOR = 0.3  # prorrogação = lambda * 0.3, igual ao motor oficial
 SHOOTOUT_CONVERSION = 0.75  # conversão por cobrança, só para ilustrar a disputa
 
@@ -374,12 +382,10 @@ def build_probability_figure(result: dict, bandeiras: dict[str, str], speed: str
     if chart_kind == "avanco":
         series = [("adv_a", f"{team_with_flag(home)} avança", home_color, home),
                   ("adv_b", f"{team_with_flag(away)} avança", away_color, away)]
-        title = "Probabilidade de avanço"
     else:
         series = [("win_a", f"{team_with_flag(home)} vence", home_color, home),
                   ("draw", "Empate", DRAW_COLOR, None),
                   ("win_b", f"{team_with_flag(away)} vence", away_color, away)]
-        title = "Probabilidade de vitória, empate e derrota"
 
     custom = np.stack([frame["label"], frame["score_a"], frame["score_b"], frame["stage"]], axis=-1)
     hover = ("%{customdata[3]} %{customdata[0]}<br>Placar: %{customdata[1]} x %{customdata[2]}"
@@ -417,50 +423,76 @@ def build_probability_figure(result: dict, bandeiras: dict[str, str], speed: str
                                   text=stage.replace("Prorrogação ", "Prorr. "), showarrow=False,
                                   font=dict(color="#C9D1C9", size=10)))
 
-    # gols (revelados conforme o tempo avança), com deslocamento vertical estável
+    # gols por seleção como DADO DE TRACE (segmentos verticais). Manter os gols em
+    # traces — e não em shapes/annotations — deixa a contagem de layout CONSTANTE
+    # entre frames; era a variação dessa contagem que fazia a bandeira/rótulo
+    # sumirem e a animação travar antes do fim.
     step_set = set(int(s) for s in steps)
-    goal_marks, goal_counter = [], 0
-    for event in result["events"]:
-        if event.get("kind") != "Gol" or int(event.get("step", -1)) not in step_set:
+    home_goal_steps = sorted(int(e["step"]) for e in result["events"]
+                             if e.get("kind") == "Gol" and e.get("team") == home
+                             and int(e.get("step", -1)) in step_set)
+    away_goal_steps = sorted(int(e["step"]) for e in result["events"]
+                             if e.get("kind") == "Gol" and e.get("team") == away
+                             and int(e.get("step", -1)) in step_set)
+
+    # minutagem dos gols: (step, rótulo, cor, altura) — vira TRACE DE TEXTO revelado
+    # progressivamente. Por ser dado de trace (e não anotação de layout), a contagem
+    # de layout segue constante e nada some/trava.
+    goal_info, gi = [], 0
+    for e in result["events"]:
+        if e.get("kind") != "Gol" or int(e.get("step", -1)) not in step_set:
             continue
-        goal_marks.append({
-            "step": int(event["step"]),
-            "color": home_color if event.get("team") == home else away_color,
-            "label": event.get("label", ""), "team": event.get("team", ""),
-            "y": 103 + (goal_counter % 3) * 5.0})
-        goal_counter += 1
+        gcolor = home_color if e.get("team") == home else away_color
+        goal_info.append((int(e["step"]), e.get("label", ""), gcolor, 103.0 + (gi % 2) * 7.0))
+        gi += 1
 
-    def layout_upto(k: int) -> tuple[list, list]:
-        cur_step = int(steps[k])
-        shapes = list(period_shapes)
-        annots = list(period_annots)
-        for goal in goal_marks:
-            if goal["step"] > cur_step:
+    def goal_scatter(goal_steps: list, color: str, name: str, cur_step: int) -> go.Scatter:
+        xs, ys = [], []
+        for gs in goal_steps:
+            if gs > cur_step:
                 continue
-            shapes.append(dict(type="line", xref="x", yref="y", x0=goal["step"], x1=goal["step"],
-                               y0=0, y1=100, line=dict(color=goal["color"], width=1.5, dash="dot")))
-            annots.append(dict(x=goal["step"], y=goal["y"], xref="x", yref="y",
-                               text=f"Gol {esc(goal['label'])}<br>{esc(goal['team'])}", showarrow=False,
-                               bgcolor="rgba(17,22,17,0.94)", bordercolor=goal["color"],
-                               borderwidth=1, font=dict(color="#F1F1F1", size=10)))
-        cur = frame.iloc[k]
-        for col, _name, color, _team in series:
-            annots.append(dict(x=float(steps[k]), y=float(cur[col]) * 100,
-                               text=f"<b>{float(cur[col]):.1%}</b>", showarrow=False, xshift=24,
-                               bgcolor="rgba(17,22,17,0.92)", bordercolor=color, borderwidth=1,
-                               borderpad=3, font=dict(color=color, size=11),
-                               xanchor="left", yanchor="middle"))
-        # contador de tempo + placar (canto superior direito), acompanha a animação
-        annots.append(dict(x=1.0, y=1.22, xref="paper", yref="paper", align="right",
-                           xanchor="right", yanchor="top",
-                           text=(f"<b>⏱ {esc(cur['label'])}</b>"
-                                 f"<br>{esc(home)} {int(cur['score_a'])} x {int(cur['score_b'])} {esc(away)}"),
-                           showarrow=False, bgcolor="rgba(17,22,17,0.92)",
-                           bordercolor="rgba(255,207,38,0.55)", borderwidth=1, borderpad=5,
-                           font=dict(color="#FFCF26", size=13)))
-        return shapes, annots
+            xs += [gs, gs, None]
+            ys += [0, 100, None]
+        return go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=color, width=1.5, dash="dot"),
+                          hoverinfo="skip", showlegend=False, name=name)
 
-    def images_upto(k: int) -> list:
+    def goal_labels_scatter(cur_step: int) -> go.Scatter:
+        xs, ys, texts, colors = [], [], [], []
+        for gstep, glabel, gcolor, gy in goal_info:
+            if gstep > cur_step:
+                continue
+            xs.append(gstep)
+            ys.append(gy)
+            texts.append(f"⚽ {esc(glabel)}")
+            colors.append(gcolor)
+        return go.Scatter(x=xs, y=ys, mode="markers+text",
+                          marker=dict(size=7, color=colors, line=dict(color="#111611", width=1)),
+                          text=texts, textposition="top center", textfont=dict(color=colors, size=10),
+                          cliponaxis=False, hoverinfo="skip", showlegend=False, name="gols_min")
+
+    def live_panel(k: int) -> dict:
+        # painel central: minuto + placar + probabilidades AO VIVO (a referência principal)
+        cur = frame.iloc[k]
+        if chart_kind == "avanco":
+            probs = (f"<span style='color:{home_color}'>{esc(home)} {float(cur['adv_a']):.1%}</span>"
+                     f"    <span style='color:{away_color}'>{esc(away)} {float(cur['adv_b']):.1%}</span>")
+        else:
+            probs = (f"<span style='color:{home_color}'>{esc(home)} {float(cur['win_a']):.1%}</span>"
+                     f"    <span style='color:{DRAW_COLOR}'>Empate {float(cur['draw']):.1%}</span>"
+                     f"    <span style='color:{away_color}'>{esc(away)} {float(cur['win_b']):.1%}</span>")
+        return dict(x=0.5, y=1.04, xref="paper", yref="paper", align="center",
+                    xanchor="center", yanchor="bottom",
+                    text=(f"<b>⏱ {esc(cur['label'])}</b>    "
+                          f"{esc(home)} <b>{int(cur['score_a'])} x {int(cur['score_b'])}</b> {esc(away)}"
+                          f"<br>{probs}"),
+                    showarrow=False, bgcolor="rgba(17,22,17,0.94)",
+                    bordercolor="rgba(255,207,38,0.5)", borderwidth=1, borderpad=7,
+                    font=dict(color="#EDEDED", size=13))
+
+    def annots_at(k: int) -> list:
+        return period_annots + [live_panel(k)]  # contagem constante entre frames
+
+    def images_at(k: int) -> list:
         cur = frame.iloc[k]
         imgs = []
         for col, _name, _color, team in series:
@@ -471,21 +503,23 @@ def build_probability_figure(result: dict, bandeiras: dict[str, str], speed: str
                              xanchor="center", yanchor="middle", sizing="contain", layer="above"))
         return imgs
 
-    # ── estado inicial = 0' (linha ainda vazia) ──
-    fig = go.Figure()
-    for col, name, color, _team in series:
-        fig.add_trace(line_scatter(col, color, name, 0))
-    fig.add_trace(cursor_scatter(0))
+    def frame_data(k: int) -> list:
+        cur_step = int(steps[k])
+        data = [line_scatter(col, color, name, k) for col, name, color, _t in series]
+        data.append(cursor_scatter(k))
+        data.append(goal_scatter(home_goal_steps, home_color, "gols_casa", cur_step))
+        data.append(goal_scatter(away_goal_steps, away_color, "gols_fora", cur_step))
+        data.append(goal_labels_scatter(cur_step))
+        return data
 
-    # ── frames: linhas crescentes + cursor + gols/rótulos/bandeiras revelados ──
-    frames_list = []
-    for k in range(n):
-        shapes_k, annots_k = layout_upto(k)
-        frames_list.append(go.Frame(
-            name=str(k),
-            data=[line_scatter(col, color, name, k) for col, name, color, _t in series] + [cursor_scatter(k)],
-            layout=go.Layout(shapes=shapes_k, annotations=annots_k, images=images_upto(k))))
-    fig.frames = frames_list
+    # ── estado inicial = 0' + frames (só DADOS de trace; layout com contagem
+    #    CONSTANTE: períodos + painel + 2 bandeiras) ──
+    fig = go.Figure(data=frame_data(0))
+    fig.frames = [
+        go.Frame(name=str(k), data=frame_data(k),
+                 layout=go.Layout(shapes=period_shapes, annotations=annots_at(k), images=images_at(k)))
+        for k in range(n)
+    ]
 
     tick_vals, tick_text = [float(steps[0])], ["0'"]
     for stage, label in STAGE_END_LABEL.items():
@@ -494,11 +528,9 @@ def build_probability_figure(result: dict, bandeiras: dict[str, str], speed: str
             tick_vals.append(float(sub.iloc[-1]["step"]))
             tick_text.append(label)
     duration = SPEED_MS.get(speed, 210)
-    init_shapes, init_annots = layout_upto(0)
 
     fig.update_layout(
-        height=460, margin=dict(l=35, r=120, t=120, b=90),
-        title=dict(text=title, x=0.5, y=0.98, xanchor="center", yanchor="top", font=dict(size=18)),
+        height=460, margin=dict(l=35, r=40, t=100, b=90),
         xaxis=dict(title="Tempo", tickmode="array", tickvals=tick_vals, ticktext=tick_text,
                    gridcolor="rgba(255,255,255,0.07)",
                    range=[min(steps) - margin_x, max(steps) + margin_x]),
@@ -507,8 +539,8 @@ def build_probability_figure(result: dict, bandeiras: dict[str, str], speed: str
                    ticktext=["0%", "20%", "40%", "60%", "80%", "100%"],
                    gridcolor="rgba(255,255,255,0.07)"),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#C9D1C9",
-        legend=dict(orientation="h", y=1.12, x=0.0, xanchor="left"),
-        shapes=init_shapes, annotations=init_annots, images=images_upto(0),
+        showlegend=False,
+        shapes=period_shapes, annotations=annots_at(0), images=images_at(0),
         updatemenus=[dict(type="buttons", direction="left", x=-0.03, y=-0.20,
                           xanchor="left", yanchor="top", buttons=[
             dict(label="▶ Play", method="animate", args=[None, {
@@ -754,10 +786,10 @@ def render_result(result: dict, speed: str, chart_view: str) -> None:
 
     with chart_slot.container():
         st.plotly_chart(build_probability_figure(result, bandeiras_dict, speed, chart_kind),
-                        width="stretch", key=f"mm_chart_{result['seed']}_{chart_kind}")
+                        width="stretch", config=PLOTLY_CONFIG, key=f"mm_chart_{result['seed']}_{chart_kind}")
         if result.get("went_penalties"):
             st.plotly_chart(penalty_shootout_chart(result, speed), width="stretch",
-                            key=f"mm_pen_{result['seed']}")
+                            config=PLOTLY_CONFIG, key=f"mm_pen_{result['seed']}")
 
     final_point = dict(result["points"][-1])
     final_point["stage"] = "Resultado final"

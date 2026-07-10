@@ -851,5 +851,14 @@
     "Placar B": 0,
     "Status": "encerrado",
     "Vencedor": "França"
+  },
+  {
+    "Seleção A": "Espanha",
+    "Seleção B": "Bélgica",
+    "Data": "Sexta-feira, 10 de julho de 2026",
+    "Placar A": 2,
+    "Placar B": 1,
+    "Status": "encerrado",
+    "Vencedor": "Espanha"
   }
 ]

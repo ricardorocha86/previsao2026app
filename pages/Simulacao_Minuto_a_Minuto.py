@@ -530,8 +530,8 @@ def build_probability_figure(result: dict, bandeiras: dict[str, str], speed: str
     duration = SPEED_MS.get(speed, 210)
 
     fig.update_layout(
-        height=460, margin=dict(l=35, r=40, t=100, b=90),
-        xaxis=dict(title="Tempo", tickmode="array", tickvals=tick_vals, ticktext=tick_text,
+        height=470, margin=dict(l=35, r=40, t=100, b=140),
+        xaxis=dict(tickmode="array", tickvals=tick_vals, ticktext=tick_text,
                    gridcolor="rgba(255,255,255,0.07)",
                    range=[min(steps) - margin_x, max(steps) + margin_x]),
         yaxis=dict(title="Probabilidade", range=[-2, 118], tickmode="array",
@@ -539,17 +539,18 @@ def build_probability_figure(result: dict, bandeiras: dict[str, str], speed: str
                    ticktext=["0%", "20%", "40%", "60%", "80%", "100%"],
                    gridcolor="rgba(255,255,255,0.07)"),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#C9D1C9",
-        showlegend=False,
+        showlegend=False, dragmode=False,  # sem arraste: no celular, o dedo rola a página
         shapes=period_shapes, annotations=annots_at(0), images=images_at(0),
-        updatemenus=[dict(type="buttons", direction="left", x=-0.03, y=-0.20,
-                          xanchor="left", yanchor="top", buttons=[
+        updatemenus=[dict(type="buttons", direction="left", x=0.0, y=-0.16,
+                          xanchor="left", yanchor="top", pad=dict(t=0, r=0), buttons=[
             dict(label="▶ Play", method="animate", args=[None, {
                 "frame": {"duration": duration, "redraw": True},
                 "transition": {"duration": 0}, "fromcurrent": True, "mode": "immediate"}]),
             dict(label="⏸ Pausar", method="animate", args=[[None], {
                 "frame": {"duration": 0, "redraw": False},
                 "transition": {"duration": 0}, "mode": "immediate"}])])],
-        sliders=[dict(active=0, x=0.18, y=-0.20, len=0.80,
+        # slider em linha própria, abaixo dos botões (no celular não se sobrepõem)
+        sliders=[dict(active=0, x=0.0, y=-0.42, len=1.0,
                       currentvalue={"visible": False}, steps=[
             dict(label="", method="animate", args=[[str(k)], {
                 "frame": {"duration": 0, "redraw": True},
@@ -591,6 +592,7 @@ def penalty_shootout_chart(result: dict, speed: str) -> go.Figure:
                    ticktext=[team_with_flag(home), team_with_flag(away)],
                    gridcolor="rgba(255,255,255,0.07)"),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#C9D1C9",
+        dragmode=False,
         updatemenus=[dict(type="buttons", direction="left", x=0, y=1.22, buttons=[
             dict(label="▶", method="animate", args=[None, {
                 "frame": {"duration": duration, "redraw": True},
@@ -608,6 +610,13 @@ def inject_minute_css() -> None:
 <style>
     h1, h2, h3 { letter-spacing: 0 !important; }
     .block-container { padding-top: 1.35rem !important; max-width: 95% !important; }
+    /* Mobile: o gesto vertical rola a página em vez de o gráfico capturar o toque.
+       Sobrescreve o touch-action:none que o Plotly coloca na camada de arraste. */
+    [data-testid="stPlotlyChart"], .js-plotly-plot, .js-plotly-plot .plotly,
+    .js-plotly-plot .draglayer, .js-plotly-plot .nsewdrag,
+    .js-plotly-plot .draglayer .drag {
+        touch-action: pan-y !important;
+    }
     .minute-hero { background: linear-gradient(135deg, rgba(17,22,17,0.98), rgba(3,92,136,0.28));
         border: 1px solid rgba(241,241,241,0.10); border-radius: 8px; padding: 0.95rem 1.1rem; margin-bottom: 0.8rem; }
     .minute-title { color: #E0E4DE; font-family: 'Exo 2', sans-serif; font-size: 2rem; line-height: 1.05;

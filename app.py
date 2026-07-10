@@ -12,11 +12,12 @@ st.set_page_config(
 datasets = st.Page("pages/Explorador_de_Dados.py", title="Conjunto de Dados", icon="📁")
 indicador_forca = st.Page("pages/Indicador_de_Força.py", title="Indicador de Força", icon="📊")
 partida = st.Page("pages/Partida.py", title="Probabilidade de uma Partida", icon="🆚", default=True)
+minuto_a_minuto = st.Page("pages/Simulacao_Minuto_a_Minuto.py", title="Simulação Minuto a Minuto", icon="⏱️")
 explorador_forca = st.Page("pages/Explorador_de_Força.py", title="Simulação Copa do Mundo 2026", icon="🏆")
 ao_vivo = st.Page("pages/Simulação_Ao_Vivo.py", title="Simulação Ao Vivo da Copa", icon="⚽")
 
 # ============ NAVEGAÇÃO ============
-pg = st.navigation([partida, ao_vivo, explorador_forca, indicador_forca, datasets])
+pg = st.navigation([partida, minuto_a_minuto, ao_vivo, explorador_forca, indicador_forca, datasets])
 
 # ============ EXECUTAR PÁGINA SELECIONADA ============
 pg.run()

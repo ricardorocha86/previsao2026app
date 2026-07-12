@@ -869,5 +869,14 @@
     "Placar B": 2,
     "Status": "encerrado",
     "Vencedor": "Inglaterra"
+  },
+  {
+    "Seleção A": "Argentina",
+    "Seleção B": "Suíça",
+    "Data": "Domingo, 12 de julho de 2026",
+    "Placar A": 3,
+    "Placar B": 1,
+    "Status": "encerrado",
+    "Vencedor": "Argentina"
   }
 ]

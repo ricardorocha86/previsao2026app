@@ -18,7 +18,10 @@ def _carregar_vetor_forca_mercado_cached(caminho: str, mtime: float) -> dict:
     # mtime na chave do cache: re-rodar o buscador invalida o cache sozinho.
     try:
         with open(caminho, encoding="utf-8") as arquivo:
-            vetor = json.load(arquivo).get("vetor_forca", {})
+            dados = json.load(arquivo)
+            # vetor_forca_com_heranca (se existir): eliminados mostram a forca
+            # da ultima rodada em que ainda tinham chance real, em vez do piso.
+            vetor = dados.get("vetor_forca_com_heranca") or dados.get("vetor_forca", {})
             return {
                 canonical_team_key(str(team_key)): float(forca)
                 for team_key, forca in vetor.items()

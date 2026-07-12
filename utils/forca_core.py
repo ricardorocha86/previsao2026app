@@ -267,7 +267,11 @@ def _team_key_series(dataframe: pd.DataFrame) -> pd.Series:
 def build_optimized_force_table(dataframe: pd.DataFrame, vector_data: dict | None = None) -> tuple[pd.DataFrame, float]:
     result = dataframe.copy()
     vector_data = vector_data or load_optimized_force_vector()
-    vector = {canonical_team_key(str(key)): float(value) for key, value in vector_data["vetor_forca"].items()}
+    # vetor_forca_com_heranca (se existir): eliminados usam a forca da ultima
+    # rodada em que ainda tinham chance real, em vez do piso — mantem a pagina
+    # de Partida coerente para confrontos hipoteticos com times ja eliminados.
+    vetor_bruto = vector_data.get("vetor_forca_com_heranca") or vector_data["vetor_forca"]
+    vector = {canonical_team_key(str(key)): float(value) for key, value in vetor_bruto.items()}
     team_keys = _team_key_series(result)
     missing = sorted(set(team_keys) - set(vector))
     if missing:

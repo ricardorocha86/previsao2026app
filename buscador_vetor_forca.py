@@ -212,11 +212,56 @@ def load_data(reference_path=None):
 
 
 # ==========================================
+# HERANÇA DE FORÇA PARA SELEÇÕES ELIMINADAS
+# ==========================================
+FASES_DIR = OUTPUT_DIR / "vetores_forca"
+
+
+def carregar_heranca_historica(team_keys, fases_dir=FASES_DIR):
+    """Percorre as fases arquivadas (resultados/vetores_forca/NN_fase_data/) em
+    ordem cronológica e retorna, por seleção, a força otimizada na ÚLTIMA fase
+    em que ela ainda tinha chance real de título (market_prob > 0 na referência
+    daquela fase). Serve para que uma seleção eliminada mantenha, no vetor
+    ativo, o valor de força da última rodada em que foi otimizada de verdade —
+    em vez de cair ao piso — permitindo simular partidas hipotéticas coerentes
+    com ela na página de Partida.
+    """
+    heranca = {}
+    if not fases_dir.exists():
+        return heranca
+    for fase_dir in sorted(fases_dir.iterdir()):
+        vetor_path = fase_dir / "vetor_forca_otimo.json"
+        if not vetor_path.exists():
+            continue
+        try:
+            with open(vetor_path, "r", encoding="utf-8") as f:
+                fase_data = json.load(f)
+            vetor_forca = fase_data.get("vetor_forca", {})
+            ref = fase_data.get("parametros_simulacao", {}).get("referencia_probabilidades")
+            if not ref or not vetor_forca:
+                continue
+            ref_path = Path(ref)
+            if not ref_path.is_absolute():
+                ref_path = BASE_DIR / ref_path
+            if not ref_path.exists():
+                continue
+            odds_fase = load_market_target(ref_path)
+            market_probs_fase = dict(zip(odds_fase["team_key"], odds_fase["market_prob"]))
+        except Exception as exc:
+            print(f"   ⚠️ Herança: pulando fase {fase_dir.name} ({exc})")
+            continue
+        for tk in team_keys:
+            if market_probs_fase.get(tk, 0) > 0 and tk in vetor_forca:
+                heranca[tk] = float(vetor_forca[tk])
+    return heranca
+
+
+# ==========================================
 # ALGORITMO PRINCIPAL: COORDINATE DESCENT
 # ==========================================
 def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultados=False,
                        usar_crn=False, alpha_ini=None, alpha_fim=None,
-                       tol_kl=None, tol_mae=None, foco_positivas=False):
+                       tol_kl=None, tol_mae=None, foco_positivas=False, sem_heranca=False):
     alpha_ini = ALPHA_INICIAL if alpha_ini is None else alpha_ini
     alpha_fim = ALPHA_FINAL if alpha_fim is None else alpha_fim
     tol_kl = TOLERANCIA_KL if tol_kl is None else tol_kl
@@ -401,12 +446,27 @@ def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultado
     print(f"   RMSE:        {metrics_final['rmse']:.6f}")
     print(f"   RMSPE:       {metrics_final['rmspe']:.4f}")
     print(f"   Spearman ρ:  {metrics_final['spearman_rho']:.4f}")
-    
+
+    # ==========================================
+    # HERANÇA: seleções eliminadas mantêm a força da última rodada em que
+    # ainda tinham chance real, em vez de cair ao piso.
+    # ==========================================
+    vetor_forca_bruto = {tk: float(forces[i]) for i, tk in enumerate(team_keys)}
+    heranca = carregar_heranca_historica(team_keys) if not sem_heranca else {}
+    vetor_forca_final = dict(vetor_forca_bruto)
+    n_herdados = 0
+    for i, tk in enumerate(team_keys):
+        if p_market[i] <= 0 and tk in heranca:
+            vetor_forca_final[tk] = heranca[tk]
+            n_herdados += 1
+    if not sem_heranca:
+        print(f"   Herança de eliminados:   {n_herdados} seleção(ões) usando força da última rodada em que jogaram")
+
     # ==========================================
     # SALVAR RESULTADOS
     # ==========================================
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     # 1. JSON com o vetor completo
     vetor_resultado = {
         "descricao": "Vetor de força ótimo encontrado pelo Coordinate Descent",
@@ -429,9 +489,21 @@ def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultado
             "jogos_grupo_travados": n_travados,
             "travou_mata_mata": travar_resultados,
             "jogos_mata_mata_travados": n_mata_mata_travados,
+            "heranca_forca_eliminados": not sem_heranca,
+            "n_selecoes_herdadas": n_herdados,
         },
         "metricas_finais": metrics_final,
-        "vetor_forca": {tk: float(forces[i]) for i, tk in enumerate(team_keys)},
+        # vetor_forca: saida bruta do Coordinate Descent (mantida como estava —
+        # e o alvo que ajustar_parametros_ao_vetor.py/otimizador_optuna.py usam
+        # para calibrar as 6 variaveis, entao NAO pode conter heranca).
+        "vetor_forca": vetor_forca_bruto,
+        # vetor_forca_com_heranca: o que o app (forca_core) usa de fato. Selecoes
+        # ainda vivas = forca otimizada nesta rodada; selecoes ja eliminadas =
+        # forca herdada da ultima rodada em que tinham chance real (ver
+        # carregar_heranca_historica), para a pagina de Partida continuar
+        # simulando confrontos hipoteticos com elas de forma coerente com a
+        # forca historica, em vez de todo eliminado cair no mesmo piso.
+        "vetor_forca_com_heranca": vetor_forca_final,
     }
     
     with open(OUTPUT_VETOR, "w", encoding="utf-8") as f:
@@ -442,6 +514,10 @@ def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultado
     df_resultado = pd.DataFrame({
         "team_key": team_keys,
         "forca": forces,
+        "forca_final_com_heranca": [vetor_forca_final[tk] for tk in team_keys],
+        "herdada_de_rodada_anterior": [
+            bool(p_market[i] <= 0 and team_keys[i] in heranca) for i in range(len(team_keys))
+        ],
         "prob_mercado": p_market,
         "prob_simulada": p_sim_final,
         "erro_absoluto": np.abs(p_sim_final - p_market),
@@ -497,6 +573,8 @@ if __name__ == "__main__":
     parser.add_argument('--tol-mae', type=float, default=None, help='tolerância de parada (MAE)')
     parser.add_argument('--foco-positivas', action='store_true',
                         help='calcula métricas de erro apenas nas seleções com mercado positivo')
+    parser.add_argument('--sem-heranca', action='store_true',
+                        help='desliga a herança de força para eliminados (usa o piso puro, comportamento antigo)')
     args = parser.parse_args()
     N_SIMS_POR_ITERACAO = args.sims
     MAX_ITERACOES = args.max_iter
@@ -510,4 +588,5 @@ if __name__ == "__main__":
         tol_kl=args.tol_kl,
         tol_mae=args.tol_mae,
         foco_positivas=args.foco_positivas,
+        sem_heranca=args.sem_heranca,
     )

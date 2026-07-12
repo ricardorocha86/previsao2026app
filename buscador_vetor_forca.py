@@ -133,8 +133,12 @@ def simulate_and_count_champions(groups, strengths, match_cache, n_sims, rng=Non
     return champion_counts
 
 
-def compute_metrics(p_market, p_sim):
-    """Calcula métricas de comparação entre probabilidades."""
+def compute_metrics(p_market, p_sim, focus_mask=None):
+    """Calcula métricas; opcionalmente concentra erro nas seleções positivas."""
+    if focus_mask is not None:
+        focus_mask = np.asarray(focus_mask, dtype=bool)
+        p_market = np.asarray(p_market)[focus_mask]
+        p_sim = np.asarray(p_sim)[focus_mask]
     # KL Divergence
     p_m = np.clip(p_market, 1e-10, 1.0)
     p_s = np.clip(p_sim, 1e-10, 1.0)
@@ -212,7 +216,7 @@ def load_data(reference_path=None):
 # ==========================================
 def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultados=False,
                        usar_crn=False, alpha_ini=None, alpha_fim=None,
-                       tol_kl=None, tol_mae=None):
+                       tol_kl=None, tol_mae=None, foco_positivas=False):
     alpha_ini = ALPHA_INICIAL if alpha_ini is None else alpha_ini
     alpha_fim = ALPHA_FINAL if alpha_fim is None else alpha_fim
     tol_kl = TOLERANCIA_KL if tol_kl is None else tol_kl
@@ -253,6 +257,9 @@ def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultado
 
     # Vetor de probabilidades de mercado (ordenado por team_key)
     p_market = np.array([market_probs[tk] for tk in team_keys])
+    positive_mask = p_market > 0 if foco_positivas else None
+    if foco_positivas:
+        print(f"   Métricas focadas:        {int(positive_mask.sum())} seleções positivas")
 
     # -------------------------------------------------------
     # INICIALIZAÇÃO: warm-start de um vetor já otimizado (poucas iterações para
@@ -301,7 +308,7 @@ def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultado
         p_sim = np.array([champion_counts[tk] / N_SIMS_POR_ITERACAO for tk in team_keys])
         
         # Métricas
-        metrics = compute_metrics(p_market, p_sim)
+        metrics = compute_metrics(p_market, p_sim, focus_mask=positive_mask)
         
         # Tempo
         elapsed = time.time() - start_time
@@ -386,7 +393,7 @@ def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultado
         locked_group_results=locked_group_results,
         locked_knockout_results=locked_knockout_results)
     p_sim_final = np.array([champion_counts_final[tk] / n_validacao for tk in team_keys])
-    metrics_final = compute_metrics(p_market, p_sim_final)
+    metrics_final = compute_metrics(p_market, p_sim_final, focus_mask=positive_mask)
     
     print(f"   KL-Div:      {metrics_final['kl_div']:.6f}")
     print(f"   MAE:         {metrics_final['mae']:.6f}")
@@ -417,6 +424,7 @@ def buscar_vetor_forca(reference_path=None, vetor_inicial=None, travar_resultado
             "referencia_probabilidades": data["reference_path"],
             "warm_start_de": vetor_inicial,
             "crn": usar_crn,
+            "foco_positivas": foco_positivas,
             "travou_rodada_grupos": travar_resultados,
             "jogos_grupo_travados": n_travados,
             "travou_mata_mata": travar_resultados,
@@ -487,6 +495,8 @@ if __name__ == "__main__":
     parser.add_argument('--alpha-final', type=float, default=None, help='learning rate final')
     parser.add_argument('--tol-kl', type=float, default=None, help='tolerância de parada (KL)')
     parser.add_argument('--tol-mae', type=float, default=None, help='tolerância de parada (MAE)')
+    parser.add_argument('--foco-positivas', action='store_true',
+                        help='calcula métricas de erro apenas nas seleções com mercado positivo')
     args = parser.parse_args()
     N_SIMS_POR_ITERACAO = args.sims
     MAX_ITERACOES = args.max_iter
@@ -499,4 +509,5 @@ if __name__ == "__main__":
         alpha_fim=args.alpha_final,
         tol_kl=args.tol_kl,
         tol_mae=args.tol_mae,
+        foco_positivas=args.foco_positivas,
     )

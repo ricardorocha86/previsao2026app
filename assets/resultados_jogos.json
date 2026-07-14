@@ -878,5 +878,14 @@
     "Placar B": 1,
     "Status": "encerrado",
     "Vencedor": "Argentina"
+  },
+  {
+    "Seleção A": "França",
+    "Seleção B": "Espanha",
+    "Data": "Terça-feira, 14 de julho de 2026",
+    "Placar A": 0,
+    "Placar B": 2,
+    "Status": "encerrado",
+    "Vencedor": "Espanha"
   }
 ]

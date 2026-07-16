@@ -29,6 +29,6 @@
   { "Jogo": 100, "Grupo": "Quartas", "Tipo": "mata-mata", "Data": "Sábado, 11 de julho de 2026", "Seleção A": "Vencedor Jogo 95", "Seleção B": "Vencedor Jogo 96" },
   { "Jogo": 101, "Grupo": "Semifinais", "Tipo": "mata-mata", "Data": "Terça-feira, 14 de julho de 2026", "Seleção A": "Vencedor Jogo 97", "Seleção B": "Vencedor Jogo 98" },
   { "Jogo": 102, "Grupo": "Semifinais", "Tipo": "mata-mata", "Data": "Quarta-feira, 15 de julho de 2026", "Seleção A": "Vencedor Jogo 99", "Seleção B": "Vencedor Jogo 100" },
-  { "Jogo": 103, "Grupo": "Disputa de 3º lugar", "Tipo": "mata-mata", "Data": "Sábado, 18 de julho de 2026", "Seleção A": "Perdedor Jogo 101", "Seleção B": "Perdedor Jogo 102" },
-  { "Jogo": 104, "Grupo": "Final", "Tipo": "mata-mata", "Data": "Domingo, 19 de julho de 2026", "Seleção A": "Vencedor Jogo 101", "Seleção B": "Vencedor Jogo 102" }
+  { "Jogo": 103, "Grupo": "Disputa de 3º lugar", "Tipo": "mata-mata", "Data": "Sábado, 18 de julho de 2026", "Seleção A": "França", "Seleção B": "Inglaterra" },
+  { "Jogo": 104, "Grupo": "Final", "Tipo": "mata-mata", "Data": "Domingo, 19 de julho de 2026", "Seleção A": "Espanha", "Seleção B": "Argentina" }
 ]

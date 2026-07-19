@@ -896,5 +896,14 @@
     "Placar B": 2,
     "Status": "encerrado",
     "Vencedor": "Argentina"
+  },
+  {
+    "Seleção A": "França",
+    "Seleção B": "Inglaterra",
+    "Data": "Sábado, 18 de julho de 2026",
+    "Placar A": 4,
+    "Placar B": 6,
+    "Status": "encerrado",
+    "Vencedor": "Inglaterra"
   }
 ]
